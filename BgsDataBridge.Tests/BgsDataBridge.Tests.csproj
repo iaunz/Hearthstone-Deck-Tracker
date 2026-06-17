@@ -14,7 +14,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="HearthDb">
+      <HintPath>..\lib\HearthDb.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\BgsDataBridge\BgsDataBridge.csproj" />
+    <ProjectReference Include="..\Hearthstone Deck Tracker\Hearthstone Deck Tracker.csproj" />
   </ItemGroup>
 
 </Project>
