@@ -925,7 +925,7 @@ namespace BgsDataBridge.Tests.Webhook
             // key="k", body="hello" → HMAC-SHA256 lowerhex
             var sig = HmacSigner.Sign("hello", "k");
             // 用任意标准库离线算出的定值；实现须与此一致
-            Assert.AreEqual("aa7472787a2f5b068d5374369b785079b56c07ce1790d4f70f5e36b0d2890fb9", sig);
+            Assert.AreEqual("406e4b43f87095aa86ca6299d25e875921fefa180f02043bb29bec5681c0c2d0", sig);
         }
 
         [TestMethod]
