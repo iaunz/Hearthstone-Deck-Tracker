@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    Dev/build fix: supply .NET Framework 4.7.2 reference assemblies via NuGet so
+    `dotnet build` works without a Visual Studio install or the system targeting pack
+    being discoverable by the .NET SDK's MSBuild. HDT's other projects already
+    reference this package; this applies it uniformly to all net472 projects
+    (including the BgsDataBridge plugin/tests). Harmless under Visual Studio.
+  -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

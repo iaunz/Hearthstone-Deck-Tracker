@@ -23,6 +23,15 @@
 - HTTP 仅 **localhost**，**只读**（v1 无写端点）。
 - 商店 `frozen` 为尽力而为可空字段。
 
+## Build & Test Toolchain（本机已验证 —— 覆盖下方各任务的命令）
+
+> **背景**：主 HDT 工程有一个自定义 `ResGen.exe` 目标，.NET SDK 的 MSBuild（`dotnet build`）拒绝运行（"ResGen.exe not supported on .NET Core MSBuild"）。因此 `dotnet build` / `dotnet test` **无法**构建主工程，也无法构建引用它的插件/测试。必须用经典 Visual Studio MSBuild。环境门禁已通过：整个 solution 用 VS 2022 MSBuild 构建成功，主 exe 已产出。
+
+- **构建（统一用这个）**：`"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe" <工程或sln> -p:Configuration=Debug -p:Platform=x86 -v:minimal -nologo`（32 位 MSBuild，HDT 为 x86）。
+- **跑测试（先构建，再加 --no-build）**：`dotnet test <测试工程>.csproj --no-build -p:Platform=x86 --filter <名>` —— `--no-build` **必需**（阻止 dotnet 的 MSBuild 重新构建触发 ResGen）。等价替代：`vstest.console.exe <测试.dll>`。
+- 仓库根的 `Directory.Build.props` 给所有 net472 工程加了 `Microsoft.NETFramework.ReferenceAssemblies` 1.0.3（VS MSBuild 下无害、增强健壮性）。
+- 下方各任务里凡是写 `dotnet test` 或 `msbuild` 的，一律按上述两条替换。
+
 ---
 
 ## File Structure
@@ -66,18 +75,16 @@
 - Create: `BgsDataBridge.Tests/BgsDataBridge.Tests.csproj`
 - Modify: `Hearthstone Deck Tracker.sln`（加入两个项目）
 
-- [ ] **Step 1: 确认 HDT 解决方案可构建（一次性环境门禁）**
+- [ ] **Step 1: 确认 HDT 解决方案可构建（环境门禁已通过，仅复核）**
 
-拉取 lib 依赖并构建（任选一种，以你的环境为准）：
+环境门禁**已验证通过**：`.NET Framework 4.7.2 Developer Pack` + `Visual Studio Build Tools 2022` 已安装，solution 用 VS MSBuild 构建成功、主 exe 已产出。本步只需复核：
 
 ```bash
-# 方式 A：Visual Studio 打开 Hearthstone Deck Tracker.sln，还原 NuGet，构建 Solution（Debug|x86）
-# 方式 B：命令行（需 VS Build Tools + .NET SDK）
-msbuild "Hearthstone Deck Tracker.sln" /t:Restore /p:Configuration=Debug /p:Platform=x86
-msbuild "Hearthstone Deck Tracker.sln" /p:Configuration=Debug /p:Platform=x86
+"C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe" \
+  "Hearthstone Deck Tracker.sln" -p:Configuration=Debug -p:Platform=x86 -v:minimal -nologo
 ```
 
-Expected：构建成功（HDTTests 项目随之构建）。**若 HDT 本身构建不过，先解决环境问题——这是仓库前置，非本计划范畴。** lib 依赖由 `Bootstrap/Bootstrap.csproj` 从 `https://libs.hearthsim.net/hdt/HearthMirror.zip` 下载到 `lib/`；VS 还原/构建会自动触发。
+Expected：`0 个错误`，产出 `Hearthstone Deck Tracker/bin/x86/Debug/HearthstoneDeckTracker.exe`。lib 依赖由 `Bootstrap/Bootstrap.csproj` 下载到 `lib/`（构建时自动触发）。复核通过即可进入 Step 2。
 
 - [ ] **Step 2: 创建插件项目 `BgsDataBridge.csproj`**
 
