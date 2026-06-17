@@ -46,5 +46,15 @@ namespace BgsDataBridge.Tests.Http
             var pretty = d.Dispatch("/state", "pretty=1").Body;
             Assert.IsTrue(pretty.Length > compact.Length); // 缩进后更长
         }
+
+        [TestMethod]
+        public void Root_Returns_Html()
+        {
+            var d = new RouteDispatcher(new FakeSource(), new GameStateProjector());
+            var r = d.Dispatch("/", "");
+            Assert.AreEqual(200, r.Status);
+            Assert.AreEqual("text/html", r.ContentType);
+            StringAssert.Contains(r.Body, "BgsDataBridge");
+        }
     }
 }
