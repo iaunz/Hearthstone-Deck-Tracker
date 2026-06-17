@@ -47,5 +47,62 @@ namespace BgsDataBridge.Tests.Dtos
             Assert.AreEqual(137, (int)j["seq"]);
             Assert.AreEqual("ShopPhaseStart", j["event"]);
         }
+
+        // C1 regression: the webhook `data` field must serialize as a JSON
+        // OBJECT (per spec §4.2), not a JSON string. Before the fix, Emit
+        // assigned a JSON string to EventEnvelope.Data (object), and
+        // WebhookDispatcher's JsonConvert.SerializeObject(envelope) re-encoded
+        // that string → "data":"{}" or "data":"{\"shop\":...}". This test
+        // builds the two real envelope shapes (MatchStart: empty object;
+        // ShopChanged: {shop, turn, phase} with a projected BgsShop) and
+        // asserts j["data"].Type == JTokenType.Object for BOTH — which would
+        // have failed against the old string-typed assignment.
+        [TestMethod]
+        public void Envelope_Data_IsJsonObject_ForBothEventShapes()
+        {
+            // MatchStart shape: Data = new {} (anonymous empty object).
+            var matchStart = new EventEnvelope
+            {
+                Schema = "bgs-event/v1", Seq = 1,
+                Event = BridgeEventType.MatchStart,
+                At = "2026-06-17T00:00:00Z",
+                Match = new { gameType = "BattlegroundsSolo" },
+                Data = new {}
+            };
+            var msJson = JsonConvert.SerializeObject(matchStart);
+            var ms = JObject.Parse(msJson);
+            Assert.AreEqual(JTokenType.Object, ms["data"].Type,
+                "MatchStart data must be a JSON object, was: " + msJson);
+            // Empty object round-trips as {} (no properties).
+            Assert.AreEqual(0, ((JObject)ms["data"]).Count);
+
+            // ShopChanged shape: Data = { shop = BgsShop{...}, turn, phase }.
+            var shop = new BgsShop
+            {
+                Available = true, Tier = 3, Frozen = false,
+                Offers = new List<BgsMinion>
+                {
+                    new BgsMinion { CardId = "BACON_1", Attack = 2, Health = 3 }
+                }
+            };
+            var shopChanged = new EventEnvelope
+            {
+                Schema = "bgs-event/v1", Seq = 2,
+                Event = BridgeEventType.ShopChanged,
+                At = "2026-06-17T00:00:01Z",
+                Match = new { gameType = "BattlegroundsSolo" },
+                Data = new { shop, turn = 5, phase = "Shop" }
+            };
+            var scJson = JsonConvert.SerializeObject(shopChanged);
+            var sc = JObject.Parse(scJson);
+            Assert.AreEqual(JTokenType.Object, sc["data"].Type,
+                "ShopChanged data must be a JSON object, was: " + scJson);
+            // The shop DTO nested under data is a clean BgsShop (cardId present,
+            // no Entity tag dicts leak).
+            Assert.AreEqual("BACON_1", (string)sc["data"]["shop"]["offers"][0]["cardId"]);
+            Assert.AreEqual(2, (int)sc["data"]["shop"]["offers"][0]["attack"]);
+            Assert.AreEqual(5, (int)sc["data"]["turn"]);
+            Assert.AreEqual("Shop", (string)sc["data"]["phase"]);
+        }
     }
 }

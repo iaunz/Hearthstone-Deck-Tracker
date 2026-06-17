@@ -15,7 +15,7 @@ namespace BgsDataBridge.Projector
                 Locale = "enUS", // HdtGameSource 可覆写为 Config.Instance 选定语言
                 CapturedAt = DateTimeOffset.UtcNow.ToString("o"),
                 InMatch = v.InMatch,
-                Partial = false,
+                Partial = v.Partial,
                 Match = new BgsMatch
                 {
                     GameType = v.IsBattlegrounds ? (v.IsDuos ? "BattlegroundsDuos" : "BattlegroundsSolo") : "Other",

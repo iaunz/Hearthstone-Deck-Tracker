@@ -45,7 +45,15 @@ namespace BgsDataBridge.Http
             {
                 HttpListenerContext ctx;
                 try { ctx = _listener.GetContext(); }
-                catch { if (_running) continue; else break; }
+                catch
+                {
+                    // M4: if GetContext() throws repeatedly (e.g. a degenerate
+                    // disposal race), an unthrottled continue would burn a
+                    // core. Sleep 50ms before retrying; on intentional Stop
+                    // (_running==false) we still break immediately.
+                    if (_running) { Thread.Sleep(50); continue; }
+                    else break;
+                }
                 try { Handle(ctx); }
                 catch { /* 单请求失败不影响服务 */ }
             }

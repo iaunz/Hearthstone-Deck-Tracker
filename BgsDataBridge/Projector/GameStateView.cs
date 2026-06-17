@@ -7,6 +7,10 @@ namespace BgsDataBridge.Projector
     public class GameStateView
     {
         public bool InMatch;
+        // I2: set true by HdtGameSource.Capture()'s outer catch when any read
+        // threw and the view is a best-effort partial. Projector propagates it
+        // to BgsSnapshot.Partial so consumers can distrust the snapshot.
+        public bool Partial;
         public bool IsBattlegrounds;
         public bool IsDuos;
         public bool Spectator;

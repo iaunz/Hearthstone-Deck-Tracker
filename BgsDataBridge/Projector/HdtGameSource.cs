@@ -33,22 +33,50 @@ namespace BgsDataBridge.Projector
                 v.Turn = g.GetTurnNumber();
                 v.Phase = DerivePhase(g);
 
-                var player = g.Player;
-                v.PlayerName = player.Name;
+                // I1: take ONE snapshot of the live Entities dictionary up
+                // front. Player.Board / Player.Trinkets / Player.QuestRewards
+                // / Player.Hero / g.Entities.Values are all lazy IEnumerable
+                // over _game.Entities.Values (a Dictionary mutated ~10Hz by
+                // the log thread). Enumerating them live throws
+                // InvalidOperationException on a concurrent mutation, which
+                // the old outer catch turned into a near-empty capture.
+                // CaptureEntitiesSnapshot retries once on that race.
+                var entities = CaptureEntitiesSnapshot(g);
+                // Player/Opponent.Id are scalar (cheap, non-enumerating), so
+                // safe to read directly. Wrap in try/catch defensively in
+                // case the underlying state is mid-teardown.
+                int? playerId = null;
+                try { playerId = g.Player.Id; } catch { }
+                var playerName = Safe(() => g.Player.Name);
+                // Coalesce to -1 (no entity is ever controlled by id -1) so
+                // the LINQ filters below stay null-safe and compile against
+                // IsControlledBy(int).
+                int pid = playerId ?? -1;
 
-                var board = Safe(() => player.Board.Where(x => x.IsMinion).Select(x => x.Clone()).ToList());
+                v.PlayerName = playerName;
+
+                // I1: derive every per-player collection from the SNAPSHOT
+                // list filtered by controller+zone+kind — never via the live
+                // player.Board / player.Trinkets enumerables.
+                var board = Safe(() => entities
+                    .Where(x => x.IsControlledBy(pid) && x.IsInPlay && x.IsMinion)
+                    .Select(x => x.Clone()).ToList());
                 v.PlayerBoard = board ?? new List<Entity>();
 
-                v.Hero = Safe(() => player.Hero?.Clone());
+                v.Hero = Safe(() => entities
+                    .FirstOrDefault(x => x.IsControlledBy(pid) && x.IsInPlay && x.IsHero)?.Clone());
 
-                v.HeroPower = Safe(() => g.Entities.Values.FirstOrDefault(
-                    x => x.IsHeroPower && x.IsControlledBy(player.Id))?.Clone());
+                v.HeroPower = Safe(() => entities
+                    .FirstOrDefault(x => x.IsHeroPower && x.IsControlledBy(pid))?.Clone());
 
-                var trinkets = Safe(() => player.Trinkets.Select(x => x.Clone()).ToList());
+                var trinkets = Safe(() => entities
+                    .Where(x => x.IsControlledBy(pid) && x.IsInPlay && x.IsBattlegroundsTrinket)
+                    .Select(x => x.Clone()).ToList());
                 v.Trinkets = trinkets ?? new List<Entity>();
 
-                var qr = Safe(() => player.QuestRewards.FirstOrDefault());
-                if(qr != null)
+                var qr = Safe(() => entities
+                    .FirstOrDefault(x => x.IsControlledBy(pid) && x.IsInPlay && x.IsBgsQuestReward));
+                if (qr != null)
                     v.QuestReward = qr.Clone();
 
                 // Shop: only outside the combat phase, when the shop is on screen.
@@ -71,19 +99,71 @@ namespace BgsDataBridge.Projector
             }
             catch
             {
-                // Integration layer: any single failure is non-fatal; return the partial view.
+                // I2: do NOT reset v to empty — keep whatever fields were
+                // captured so far, and flag the snapshot as Partial so
+                // consumers (HTTP /state, webhook) can distrust it.
+                v.Partial = true;
             }
             return v;
         }
 
+        /// <summary>
+        /// I3: shop-only capture for the 10Hz shop poll path. Reads only
+        /// <c>GetOpponentBoardState()</c> + turn/phase. Returns null when not
+        /// in a BGs shopping phase (the caller treats null as "no shop to
+        /// report"). The returned view has only Shop/Turn/Phase/InMatch/
+        /// IsBattlegrounds populated — Projector.Project tolerates the rest
+        /// being unset.
+        /// </summary>
+        public GameStateView CaptureShopOnly()
+        {
+            var v = new GameStateView { InMatch = false };
+            try
+            {
+                var g = Hearthstone_Deck_Tracker.API.Core.Game;
+                v.InMatch = !g.IsInMenu;
+                v.IsBattlegrounds = g.IsBattlegroundsMatch;
+                v.Turn = g.GetTurnNumber();
+                v.Phase = DerivePhase(g);
+                v.Shop = Safe(CaptureShop);
+            }
+            catch
+            {
+                v.Partial = true;
+            }
+            return v;
+        }
+
+        /// <summary>
+        /// I1: snapshot the live Entities dictionary into a local list with
+        /// one retry on the concurrent-mutation race. The retry is bounded
+        /// (single re-attempt); persistent failure is allowed to propagate to
+        /// Capture()'s outer catch (which flags Partial rather than reset).
+        /// </summary>
+        static List<Entity> CaptureEntitiesSnapshot(GameV2 g)
+        {
+            try { return g.Entities.Values.ToList(); }
+            catch (InvalidOperationException)
+            {
+                // One retry — the log thread mutates ~10Hz, so a second
+                // snapshot taken immediately after usually wins the race.
+                return g.Entities.Values.ToList();
+            }
+        }
+
         static string DerivePhase(GameV2 g)
         {
-            if(g.IsInMenu)
+            // M5: constructed / mercenary / other matches would otherwise fall
+            // through to the HeroPick/Combat/Shop ladder and report "Shop" or
+            // "HeroPick" for non-BGs modes. Short-circuit to a sane phase.
+            if (!g.IsBattlegroundsMatch)
+                return g.IsInMenu ? "None" : "Other";
+            if (g.IsInMenu)
                 return "None";
             // Hero-pick is not done yet -> still in the picking phase.
-            if(g.IsBattlegroundsHeroPickingDone == false)
+            if (g.IsBattlegroundsHeroPickingDone == false)
                 return "HeroPick";
-            if(g.IsBattlegroundsCombatPhase)
+            if (g.IsBattlegroundsCombatPhase)
                 return "Combat";
             return "Shop";
         }
@@ -91,13 +171,13 @@ namespace BgsDataBridge.Projector
         ShopView CaptureShop()
         {
             var g = Hearthstone_Deck_Tracker.API.Core.Game;
-            if(!g.IsBattlegroundsMatch || g.IsBattlegroundsCombatPhase)
+            if (!g.IsBattlegroundsMatch || g.IsBattlegroundsCombatPhase)
                 return null;
             var obs = HearthMirror.Reflection.Client.GetOpponentBoardState();
-            if(obs?.BoardCards == null)
+            if (obs?.BoardCards == null)
                 return null;
             var sv = new ShopView { Tier = 0, Frozen = null };
-            foreach(var bc in obs.BoardCards)
+            foreach (var bc in obs.BoardCards)
             {
                 var e = new Entity { CardId = bc.CardId };
                 sv.Offers.Add(e);
@@ -109,13 +189,13 @@ namespace BgsDataBridge.Projector
         {
             var g = Hearthstone_Deck_Tracker.API.Core.Game;
             var oppHero = g.Opponent.Hero;
-            if(oppHero == null)
+            if (oppHero == null)
                 return null;
             var snap = g.GetBattlegroundsBoardStateFor(oppHero.Id);
-            if(snap?.Entities == null)
+            if (snap?.Entities == null)
                 return null;
             var lo = new LastOpponentView { Turn = snap.Turn, Hero = new Entity { CardId = oppHero.CardId } };
-            foreach(var e in snap.Entities)
+            foreach (var e in snap.Entities)
                 lo.Board.Add(e.Clone());
             return lo;
         }
@@ -123,10 +203,10 @@ namespace BgsDataBridge.Projector
         List<LobbyPlayerView> CaptureLobby()
         {
             var li = Hearthstone_Deck_Tracker.API.Core.Game.MetaData.BattlegroundsLobbyInfo;
-            if(li?.Players == null)
+            if (li?.Players == null)
                 return null;
             var list = new List<LobbyPlayerView>();
-            foreach(var p in li.Players)
+            foreach (var p in li.Players)
                 list.Add(new LobbyPlayerView
                 {
                     Name = p.Name,

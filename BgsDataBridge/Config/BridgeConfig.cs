@@ -29,6 +29,11 @@ namespace BgsDataBridge.Config
                 ? new BridgeConfig()
                 : JsonConvert.DeserializeObject<BridgeConfig>(json) ?? new BridgeConfig();
             if (cfg.Webhook == null) cfg.Webhook = new WebhookHttpConfig();
+            // M1: belt-and-suspenders null-guard for Webhooks. The
+            // WebhookDispatcher ctor already coalesces this, but a config
+            // file with "webhooks":null should not surface a null collection
+            // on the loaded model either.
+            if (cfg.Webhooks == null) cfg.Webhooks = new List<WebhookConfig>();
             return cfg;
         }
         public string ToJson() => JsonConvert.SerializeObject(this, Formatting.Indented);

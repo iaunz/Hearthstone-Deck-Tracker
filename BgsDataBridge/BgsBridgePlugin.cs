@@ -11,7 +11,6 @@ using BgsDataBridge.Settings;
 using BgsDataBridge.Webhook;
 using Hearthstone_Deck_Tracker.API;
 using Hearthstone_Deck_Tracker.Plugins;
-using Newtonsoft.Json;
 
 namespace BgsDataBridge
 {
@@ -49,6 +48,13 @@ namespace BgsDataBridge
         private HdtGameSource _source;
         private long _seq;
         private bool _loaded;
+        // M9: MatchEnd historically fired twice per match — once from
+        // OnGameEnd (GameEvents.OnGameEnd) and once more from whichever of
+        // OnGameWon/Lost/Tied fires (all three were wired to OnGameEnd in
+        // OnLoad). The _matchEnded guard makes the second emit within the
+        // same match a no-op; it is reset in OnGameStart.
+        private bool _matchEnded;
+        private readonly GameStateProjector _projector = new GameStateProjector();
 
         public string Name => "BgsDataBridge";
         public string Description => "Exposes Battlegrounds state over HTTP + webhooks for local consumers.";
@@ -71,13 +77,18 @@ namespace BgsDataBridge
 
             _clock = new SystemClock();
             _source = new HdtGameSource();
+            // M9: re-arm MatchEnd guard on (re)load so a mid-match reload
+            // doesn't permanently suppress the next MatchEnd.
+            _matchEnded = false;
             _shopDeb = new ShopChangedDebouncer(_cfg.ShopChangedQuietMs, _clock);
-            // ShopChangedDebouncer.OnEmit is a ShopEmitted(string) event; the
-            // emitted payload is already a JSON string, passed straight through.
-            _shopDeb.OnEmit += payload => Emit(BridgeEventType.ShopChanged, payload);
+            // ShopChangedDebouncer.OnEmit fires once per settled shop state.
+            // We re-capture the shop-only view at emit time (cheap; one
+            // GetOpponentBoardState read) and build the C1 webhook data as a
+            // proper JSON OBJECT (anonymous {shop, turn, phase}) rather than
+            // a double-encoded JSON string.
+            _shopDeb.OnEmit += payload => Emit(BridgeEventType.ShopChanged, ShopData());
 
-            var projector = new GameStateProjector();
-            var routes = new RouteDispatcher(_source, projector);
+            var routes = new RouteDispatcher(_source, _projector);
             _http = new BridgeHttpServer(_cfg, routes);
             try { var port = _http.Start(); Logger.Info("HTTP on localhost:" + port); }
             catch (Exception ex) { Logger.Error("HTTP start failed: " + ex.Message); }
@@ -124,24 +135,44 @@ namespace BgsDataBridge
                 {
                     // ShopChanged is owned by the debouncer; ignore any SM emission.
                     if (ev.Type == BridgeEventType.ShopChanged) continue;
-                    Emit(ev.Type, null);
+                    Emit(ev.Type, new {});
                 }
 
                 // Shop debouncer: poll the shop only while in a BGs shopping phase.
+                // I3: CaptureShopOnly() skips lobby/races/rating/board/lastOpponent
+                // (the heavy reads) — only GetOpponentBoardState + turn/phase.
+                // The debouncer's payload string is a cheap fingerprint for
+                // change detection; the actual webhook DTO is rebuilt at emit
+                // time (see ShopData) so C1 gets a clean projected BgsShop.
                 if (g.IsBattlegroundsMatch && !g.IsBattlegroundsCombatPhase && !g.IsInMenu)
                 {
-                    var shop = ShopPayload();
-                    if (shop != null) _shopDeb.Update(shop, _clock.NowMs);
+                    var fp = ShopFingerprint();
+                    if (fp != null) _shopDeb.Update(fp, _clock.NowMs);
                 }
                 _shopDeb.Tick();
             }
             catch (Exception ex) { Logger.Error("OnUpdate: " + ex.Message); }
         }
 
-        void OnGameStart() => Emit(BridgeEventType.MatchStart, null);
-        void OnGameEnd() => Emit(BridgeEventType.MatchEnd, null);
+        void OnGameStart()
+        {
+            // M9: a new match re-arms the MatchEnd guard.
+            _matchEnded = false;
+            Emit(BridgeEventType.MatchStart, new {});
+        }
 
-        void Emit(BridgeEventType type, string dataPayload)
+        void OnGameEnd()
+        {
+            // M9: GameEvents.OnGameEnd AND OnGameWon/Lost/Tied are all wired
+            // here, so without a guard MatchEnd fires twice. The first call
+            // emits + sets the guard; subsequent calls within the same match
+            // are no-ops. OnGameStart resets it.
+            if (_matchEnded) return;
+            _matchEnded = true;
+            Emit(BridgeEventType.MatchEnd, new {});
+        }
+
+        void Emit(BridgeEventType type, object data)
         {
             try
             {
@@ -151,7 +182,12 @@ namespace BgsDataBridge
                     Event = type,
                     At = DateTimeOffset.UtcNow.ToString("o"),
                     Match = MatchPayload(),
-                    Data = dataPayload ?? "{}"
+                    // C1: Data is an object (anonymous or DTO). For non-shop
+                    // events pass new {} → serializes as "data":{} (object,
+                    // not the double-encoded "data":"{}" string the old
+                    // string-typed assignment produced). For ShopChanged pass
+                    // {shop, turn, phase} where shop is a projected BgsShop.
+                    Data = data ?? new {}
                 };
                 _webhook.Enqueue(env);
             }
@@ -175,15 +211,49 @@ namespace BgsDataBridge
             catch { return null; }
         }
 
-        string ShopPayload()
+        // Cheap fingerprint for ShopChangedDebouncer's change detection. The
+        // debouncer only compares string equality, so a joined cardId list +
+        // tier is enough to detect "shop contents changed". Returns null when
+        // no shop is currently on screen (debouncer treats null as "no update").
+        string ShopFingerprint()
         {
             try
             {
-                var v = _source.Capture();
-                if (v?.Shop == null) return null;
-                return JsonConvert.SerializeObject(new { shop = v.Shop, turn = v.Turn, phase = v.Phase });
+                var v = _source.CaptureShopOnly();
+                if (v?.Shop?.Offers == null || v.Shop.Offers.Count == 0) return null;
+                var ids = new System.Text.StringBuilder();
+                ids.Append(v.Turn).Append(':').Append(v.Shop.Tier).Append(':');
+                foreach (var e in v.Shop.Offers) ids.Append(e.CardId ?? "").Append(',');
+                return ids.ToString();
             }
             catch { return null; }
+        }
+
+        // C1 + I3: build the ShopChanged webhook data as a proper JSON OBJECT
+        // {shop, turn, phase} where shop is a *projected* BgsShop DTO (clean
+        // cardId/attack/health/keywords), NOT the raw ShopView (which holds
+        // Entity objects with tag dicts). CaptureShopOnly() reads only the
+        // shop slice at emit time; Project(_, false) maps it to BgsShop.
+        object ShopData()
+        {
+            try
+            {
+                var v = _source.CaptureShopOnly();
+                if (v?.Shop == null) return new {};
+                // Minimal view for projection: only Shop + InMatch + IsBattlegrounds
+                // matter for snap.Shop. includeText=false keeps the payload small.
+                var view = new GameStateView
+                {
+                    Shop = v.Shop,
+                    InMatch = true,
+                    IsBattlegrounds = true,
+                    Turn = v.Turn,
+                    Phase = v.Phase
+                };
+                var snap = _projector.Project(view, false);
+                return new { shop = snap.Shop, turn = v.Turn, phase = v.Phase };
+            }
+            catch { return new {}; }
         }
 
         MenuItem BuildMenu()
