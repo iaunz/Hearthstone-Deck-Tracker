@@ -31,7 +31,9 @@
 | 酒馆当前版本卡牌信息 | ✅ `HearthDb` + 远程 `CardDefs` XML + `BattlegroundsTagOverrides`，可解析任意 `BACON_*` 卡 ID 为本地化名称/描述/数值 |
 | 玩家战棋阵容 / 对手 / 场上随从 | ✅ 本方阵容（日志）、当前战斗对手阵容（日志）、上一对手快照（日志）、大厅 8 人名单+段位（内存） |
 | 英雄技能/饰品/任务描述 | ✅ 经 `Database.GetCardFromId(id).Text` 取本地化文本 |
-| 其它 7 人实时血量/排名 | ❌ 日志不输出、HDT 所用内存 API 也不给——契约中不出现 |
+| 其它 7 人实时血量/排名 | ❌ 日志不输出、HearthMirror 也不给——契约中不出现（见下"验证记录"） |
+
+> **验证记录（一手来源）**：已从 HDT 构建下载的 `HearthMirror.dll` 元数据枚举全部 Battlegrounds/Bacon 导出方法，与"其它玩家"相关的仅有 `GetBattlegroundsLobbyInfo`（开局一次性花名册）、`GetBattlegroundsLeaderboardHoveredEntityId`（仅返回悬停实体的 `int?`）、`GetOpponentBoardState`（当前对手）、`GetBattlegroundsTeammateBoardState`（双排队友）。**无**任何返回 8 人实时血量/排名/全盘的方法。排行榜 watcher `BattlegroundsLeaderboardArgs` 经源码确认只含 `HoveredEntityId`。要拿此数据需插件自写全新内存逆向（且 HS 内存对战期间只持有"本方+当前对手"盘面，不可靠），超出范围。
 | 商店（酒馆）售卖随从 | ⚠️ 仅"购物阶段 + 商店在屏"时可读（内存镜像） |
 | 现有 HTTP/Webhook 基础设施 | ❌ 无任何监听端——全部为全新建 |
 
