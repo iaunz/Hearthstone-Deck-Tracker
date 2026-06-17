@@ -35,6 +35,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Bootstrap", "Bootstrap\Boot
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SignToolShim", "SignToolShim\SignToolShim.csproj", "{1324828D-7E53-4458-BE90-A6EEAA565810}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BgsDataBridge", "BgsDataBridge\BgsDataBridge.csproj", "{934FA5EE-AEBD-4692-81A5-CED6483C79A0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BgsDataBridge.Tests", "BgsDataBridge.Tests\BgsDataBridge.Tests.csproj", "{87EBD4EE-97A1-4290-A4E5-C050388773D4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86
@@ -90,6 +94,18 @@ Global
 		{1324828D-7E53-4458-BE90-A6EEAA565810}.Release|x86.Build.0 = Release|Any CPU
 		{1324828D-7E53-4458-BE90-A6EEAA565810}.Squirrel|x86.ActiveCfg = Debug|Any CPU
 		{1324828D-7E53-4458-BE90-A6EEAA565810}.Squirrel|x86.Build.0 = Debug|Any CPU
+		{934FA5EE-AEBD-4692-81A5-CED6483C79A0}.Debug|x86.ActiveCfg = Debug|x86
+		{934FA5EE-AEBD-4692-81A5-CED6483C79A0}.Debug|x86.Build.0 = Debug|x86
+		{934FA5EE-AEBD-4692-81A5-CED6483C79A0}.Release|x86.ActiveCfg = Release|x86
+		{934FA5EE-AEBD-4692-81A5-CED6483C79A0}.Release|x86.Build.0 = Release|x86
+		{934FA5EE-AEBD-4692-81A5-CED6483C79A0}.Squirrel|x86.ActiveCfg = Squirrel|x86
+		{934FA5EE-AEBD-4692-81A5-CED6483C79A0}.Squirrel|x86.Build.0 = Squirrel|x86
+		{87EBD4EE-97A1-4290-A4E5-C050388773D4}.Debug|x86.ActiveCfg = Debug|x86
+		{87EBD4EE-97A1-4290-A4E5-C050388773D4}.Debug|x86.Build.0 = Debug|x86
+		{87EBD4EE-97A1-4290-A4E5-C050388773D4}.Release|x86.ActiveCfg = Release|x86
+		{87EBD4EE-97A1-4290-A4E5-C050388773D4}.Release|x86.Build.0 = Release|x86
+		{87EBD4EE-97A1-4290-A4E5-C050388773D4}.Squirrel|x86.ActiveCfg = Squirrel|x86
+		{87EBD4EE-97A1-4290-A4E5-C050388773D4}.Squirrel|x86.Build.0 = Squirrel|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
