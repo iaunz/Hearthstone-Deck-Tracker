@@ -25,7 +25,12 @@ namespace BgsDataBridge.Projector
                 },
                 AvailableRaces = v.AvailableRaces ?? new List<string>(),
                 Player = ProjectPlayer(v, includeText),
-                Shop = null, LastOpponent = null, Lobby = null
+                Shop = v.Shop != null ? new BgsShop { Available = true, Tier = v.Shop.Tier,
+                    Frozen = v.Shop.Frozen, Offers = Minions(v.Shop.Offers, includeText) } : null,
+                LastOpponent = v.LastOpponent != null ? new BgsLastOpponent { Turn = v.LastOpponent.Turn,
+                    Hero = v.LastOpponent.Hero != null ? new BgsCardRef { CardId = v.LastOpponent.Hero.CardId, Name = NameOf(v.LastOpponent.Hero) } : null,
+                    Board = Minions(v.LastOpponent.Board, includeText) } : null,
+                Lobby = v.Lobby != null && v.Lobby.Count > 0 ? new BgsLobby { Players = LobbyOf(v.Lobby) } : null
             };
             return snap;
         }
@@ -56,6 +61,19 @@ namespace BgsDataBridge.Projector
         static BgsQuestReward ToQuestReward(GameStateView v) => new BgsQuestReward
         { CardId = v.QuestReward.CardId, Name = NameOf(v.QuestReward), Text = TextOf(v.QuestReward),
           Progress = v.QuestProgress, Total = v.QuestTotal };
+
+        List<BgsMinion> Minions(List<Entity> es, bool includeText)
+        {
+            var list = new List<BgsMinion>(es.Count);
+            foreach (var e in es) list.Add(ToMinion(e, includeText));
+            return list;
+        }
+        static List<BgsLobbyPlayer> LobbyOf(List<LobbyPlayerView> src)
+        {
+            var list = new List<BgsLobbyPlayer>(src.Count);
+            foreach (var p in src) list.Add(new BgsLobbyPlayer { Name = p.Name, HeroCardId = p.HeroCardId, AccountId = p.AccountId });
+            return list;
+        }
 
         // ---- HDT 卡牌文本解析（属性名以 HDT 源为准）----
         static string NameOf(Entity e)
