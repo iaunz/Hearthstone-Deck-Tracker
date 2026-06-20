@@ -22,6 +22,26 @@ namespace BgsDataBridge.Projector
     /// </summary>
     public class HdtGameSource : IGameSource
     {
+        // #3: at match end the player's real hero leaves PLAY and only a
+        // placeholder (TB_BaconShop_HERO_PH) remains in the entity list; the
+        // PLAYER_TECH_LEVEL tag is gone too, so tier reads 0. Cache the last
+        // good (in-PLAY, non-placeholder) hero + tier seen during the match and
+        // fall back to them so MatchEnd's snapshot keeps the real hero/tier.
+        // ResetMatchCache() is called by the plugin on OnGameStart so a previous
+        // match's hero cannot leak into the next match's hero-pick snapshot.
+        private Entity _lastGoodHero;
+        private int _lastGoodTier;
+        // TB_BaconShop_HERO_PH is the post-match placeholder hero entity (name
+        // "BaconPHhero"); the old fallback grabbed it because it is
+        // IsControlledBy(pid) && IsHero. Treat it as "not a real hero".
+        const string PlaceholderHeroCardId = "TB_BaconShop_HERO_PH";
+
+        public void ResetMatchCache()
+        {
+            _lastGoodHero = null;
+            _lastGoodTier = 0;
+        }
+
         public GameStateView Capture()
         {
             var v = new GameStateView { InMatch = false };
@@ -34,7 +54,13 @@ namespace BgsDataBridge.Projector
                 v.Spectator = g.Spectator;
                 v.Turn = g.GetTurnNumber();
                 v.Phase = DerivePhase(g);
-                v.Tier = ReadTechLevel(g);
+
+                // #3: cache tier; fall back to the cached value when live reads 0
+                // mid-match (match-end teardown), so the final snapshot keeps it.
+                var tier = ReadTechLevel(g);
+                if (tier > 0) _lastGoodTier = tier;
+                else if (v.InMatch && _lastGoodTier > 0) tier = _lastGoodTier;
+                v.Tier = tier;
 
                 // I1: take ONE snapshot of the live Entities dictionary up
                 // front. Player.Board / Player.Trinkets / Player.QuestRewards
@@ -66,18 +92,38 @@ namespace BgsDataBridge.Projector
                     .Select(x => x.Clone()).ToList());
                 v.PlayerBoard = board ?? new List<Entity>();
 
-                v.Hero = Safe(() => entities
-                        .FirstOrDefault(x => x.IsControlledBy(pid) && x.IsInPlay && x.IsHero)?.Clone())
-                    // 问题 #4：对局结束清场时英雄可能已离开 PLAY 区；回退到任意我方
-                    // 英雄实体（玩家只控制一个英雄，安全）。仍为空则照旧省略字段。
-                    ?? Safe(() => entities
-                        .FirstOrDefault(x => x.IsControlledBy(pid) && x.IsHero)?.Clone());
+                // #3: prefer the real hero in PLAY (and cache it). At match end
+                // the hero leaves PLAY and the old fallback grabbed the placeholder
+                // (TB_BaconShop_HERO_PH); instead fall back to the cached hero so
+                // MatchEnd keeps the real identity. Cache empty → original
+                // any-controlled-hero fallback (covers very early capture).
+                var liveHeroInPlay = Safe(() => entities
+                    .FirstOrDefault(x => x.IsControlledBy(pid) && x.IsInPlay && x.IsHero)?.Clone());
+                Entity hero;
+                if(liveHeroInPlay != null && !IsPlaceholderHero(liveHeroInPlay))
+                {
+                    hero = liveHeroInPlay;
+                    _lastGoodHero = hero.Clone();
+                }
+                else if(_lastGoodHero != null)
+                {
+                    hero = _lastGoodHero.Clone();
+                }
+                else
+                {
+                    hero = liveHeroInPlay
+                        ?? Safe(() => entities.FirstOrDefault(x => x.IsControlledBy(pid) && x.IsHero)?.Clone());
+                }
+                v.Hero = hero;
 
                 v.HeroPower = Safe(() => entities
                     .FirstOrDefault(x => x.IsHeroPower && x.IsControlledBy(pid))?.Clone());
 
+                // #5: sort trinkets by ZONE_POSITION so the Projector's positional
+                // slot (1, 2, ...) maps to board order (1 = lesser, 2 = greater).
                 var trinkets = Safe(() => entities
                     .Where(x => x.IsControlledBy(pid) && x.IsInPlay && x.IsBattlegroundsTrinket)
+                    .OrderBy(x => x.GetTag(GameTag.ZONE_POSITION))
                     .Select(x => x.Clone()).ToList());
                 v.Trinkets = trinkets ?? new List<Entity>();
 
@@ -157,7 +203,13 @@ namespace BgsDataBridge.Projector
             if (!g.IsBattlegroundsMatch || g.IsBattlegroundsCombatPhase)
                 return null;
             var obs = HearthMirror.Reflection.Client.GetOpponentBoardState();
-            if (obs?.BoardCards == null)
+            // #4: an empty BoardCards list means the shop frame is up but cards
+            // haven't been dealt yet (typical at the instant of the Combat→Shop
+            // edge that drives ShopPhaseStart). Returning null yields an honest
+            // shop:null ("unknown / not yet dealt") instead of a misleading
+            // offers:[] ("shop is empty"). A ShopChanged event follows once the
+            // watcher sees the dealt cards.
+            if (obs?.BoardCards == null || obs.BoardCards.Count == 0)
                 return null;
             // Tier = 玩家当前酒馆等级；Frozen：HearthMirror 暂未暴露商店冻结状态，保持 null（spec §3.2）。
             var sv = new ShopView { Tier = ReadTechLevel(g), Frozen = null };
@@ -168,6 +220,8 @@ namespace BgsDataBridge.Projector
             }
             return sv;
         }
+
+        static bool IsPlaceholderHero(Entity e) => e != null && e.CardId == PlaceholderHeroCardId;
 
         LastOpponentView CaptureLastOpponent()
         {

@@ -39,7 +39,10 @@ namespace BgsDataBridge.Projector
             var p = new BgsPlayer { Name = v.PlayerName, Tier = v.Tier };
             if (v.Hero != null) p.Hero = ToHero(v.Hero);
             if (v.HeroPower != null) p.HeroPower = ToCard(v.HeroPower, true); // §4.1: heroPower text always emitted regardless of includeText
-            foreach (var t in v.Trinkets) p.Trinkets.Add(ToTrinket(t));
+            // #5: trinkets arrive zone-position-sorted from HdtGameSource, so the
+            // 1-based positional slot reflects board order (1 = lesser, 2 = greater).
+            for(int i = 0; i < v.Trinkets.Count; i++)
+                p.Trinkets.Add(ToTrinket(v.Trinkets[i], (i + 1).ToString()));
             if (v.QuestReward != null) p.QuestReward = ToQuestReward(v);
             foreach (var e in v.PlayerBoard) p.Board.Add(ToMinion(e, includeText));
             return p;
@@ -49,13 +52,26 @@ namespace BgsDataBridge.Projector
             => new BgsMinion { CardId = e.CardId, Attack = e.Attack, Health = e.Health,
                 Keywords = KeywordMap.From(e), Text = includeText ? TextOf(e) : null };
 
+        // #1: shop offers are bare Entities (CardId only, no live tags) built
+        // from HearthMirror BoardCards. Their stats/keywords come from the
+        // HearthDb CARD DEFINITION (base printed values), not entity tags —
+        // which is why this is a separate mapper from ToMinion (board minions
+        // carry live buffs in tags). Name is populated here because consumers
+        // read shop offers by card identity; Card never throws on lookup.
+        static BgsMinion ToShopOffer(Entity e, bool includeText)
+            => new BgsMinion { CardId = e.CardId, Name = NameOf(e),
+                Attack = e.Card.Attack, Health = e.Card.Health,
+                Keywords = KeywordMap.FromCard(e.Card),
+                Text = includeText ? TextOf(e) : null };
+
         static BgsHero ToHero(Entity e) => new BgsHero { CardId = e.CardId, Name = NameOf(e),
             Health = e.Health, Armor = Tag(e, GameTag.ARMOR) };
 
         static BgsCardRef ToCard(Entity e, bool withText) => new BgsCardRef { CardId = e.CardId,
             Name = NameOf(e), Text = withText ? TextOf(e) : null };
 
-        static BgsTrinket ToTrinket(Entity e) => new BgsTrinket { CardId = e.CardId, Name = NameOf(e), Text = TextOf(e) };
+        static BgsTrinket ToTrinket(Entity e, string slot) => new BgsTrinket
+            { CardId = e.CardId, Name = NameOf(e), Text = TextOf(e), Slot = slot };
 
         static BgsQuestReward ToQuestReward(GameStateView v) => new BgsQuestReward
         { CardId = v.QuestReward.CardId, Name = NameOf(v.QuestReward), Text = TextOf(v.QuestReward),
@@ -68,9 +84,18 @@ namespace BgsDataBridge.Projector
             return list;
         }
 
+        // #1: shop offers use the card-definition mapper (ToShopOffer), NOT the
+        // board's live-tag mapper (Minions/ToMinion).
+        List<BgsMinion> ShopOffers(List<Entity> es, bool includeText)
+        {
+            var list = new List<BgsMinion>(es.Count);
+            foreach (var e in es) list.Add(ToShopOffer(e, includeText));
+            return list;
+        }
+
         public BgsShop ProjectShop(ShopView shop, bool includeText)
             => shop != null ? new BgsShop { Available = true, Tier = shop.Tier,
-                Frozen = shop.Frozen, Offers = Minions(shop.Offers, includeText) } : null;
+                Frozen = shop.Frozen, Offers = ShopOffers(shop.Offers, includeText) } : null;
         static List<BgsLobbyPlayer> LobbyOf(List<LobbyPlayerView> src)
         {
             var list = new List<BgsLobbyPlayer>(src.Count);

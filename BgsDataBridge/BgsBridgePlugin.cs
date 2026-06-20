@@ -64,6 +64,14 @@ namespace BgsDataBridge
         // OnLoad). The _matchEnded guard makes the second emit within the
         // same match a no-op; it is reset in OnGameStart.
         private bool _matchEnded;
+        // #2: HDT's ActionList exposes Add() only — no Remove/Clear — so a
+        // ReloadConfig (OnUnload+OnLoad) or disable→enable cycle leaves STALE
+        // OnGameStart/OnGameEnd handlers subscribed alongside the fresh ones.
+        // The _matchEnded guard masks the duplicate OnGameEnd, but MatchStart
+        // had no such guard and double-fired (observed in the receiver log).
+        // _matchStarted is the symmetric guard: only the first OnGameStart per
+        // match emits MatchStart; reset in OnGameEnd (and OnLoad).
+        private bool _matchStarted;
         private readonly GameStateProjector _projector = new GameStateProjector();
 
         public string Name => "BgsDataBridge";
@@ -90,6 +98,8 @@ namespace BgsDataBridge
             // M9: re-arm MatchEnd guard on (re)load so a mid-match reload
             // doesn't permanently suppress the next MatchEnd.
             _matchEnded = false;
+            // #2: re-arm MatchStart guard on (re)load for the same reason.
+            _matchStarted = false;
             _shopDeb = new ShopChangedDebouncer<ShopSnapshot>(_cfg.ShopChangedQuietMs, _clock);
             // ShopChangedDebouncer.OnEmit hands us the ShopSnapshot captured at
             // Update() time. ShopData(snap) projects its ShopView to BgsShop and
@@ -136,6 +146,12 @@ namespace BgsDataBridge
             try
             {
                 var g = Hearthstone_Deck_Tracker.API.Core.Game;
+                // #2: safety net — if a match was abandoned without a clean
+                // OnGameEnd (e.g. HS force-quit), _matchStarted would stay true
+                // and silently suppress the NEXT match's MatchStart. Re-arm it
+                // whenever we observe the menu. OnGameEnd remains the normal path.
+                if (_matchStarted && g.IsInMenu)
+                    _matchStarted = false;
                 var input = new TriggerInput
                 {
                     IsBattlegroundsMatch = g.IsBattlegroundsMatch,
@@ -199,8 +215,14 @@ namespace BgsDataBridge
 
         void OnGameStart()
         {
+            // #2: dedup duplicate subscription (see _matchStarted remarks).
+            if (_matchStarted) return;
+            _matchStarted = true;
             // M9: a new match re-arms the MatchEnd guard.
             _matchEnded = false;
+            // #3: clear the per-match hero/tier cache so the previous match's
+            // hero cannot leak into this match's hero-pick snapshot.
+            _source?.ResetMatchCache();
             // §4.2: MatchStart carries the full snapshot (LLM decision context).
             Emit(BridgeEventType.MatchStart, SnapshotData());
         }
@@ -213,6 +235,8 @@ namespace BgsDataBridge
             // are no-ops. OnGameStart resets it.
             if (_matchEnded) return;
             _matchEnded = true;
+            // #2: re-arm the MatchStart guard for the next match.
+            _matchStarted = false;
             Emit(BridgeEventType.MatchEnd, SnapshotData());
         }
 
