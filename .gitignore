@@ -191,3 +191,5 @@ Resources/Tiles/
 
 # Rider config files
 .idea/
+
+__pycache__/
