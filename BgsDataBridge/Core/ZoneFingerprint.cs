@@ -24,13 +24,13 @@ namespace BgsDataBridge.Core
         static string BoardBeast(Entity e)
         {
             if (e == null) return "::0:0:";
-            return $"{e.CardId ?? ""}:{e.GetTag(GameTag.ZONE_POSITION)}:{e.Attack}:{e.Health}:{string.Join(";", KeywordMap.From(e))}";
+            return $"{e.CardId ?? ""}:{e.GetTag(GameTag.ZONE_POSITION)}:{e.Attack}:{e.Health}:{string.Join(";", KeywordMap.From(e).OrderBy(k => k))}";
         }
 
         static string HandBeast(Entity e)
         {
             if (e == null) return ":0:0:";
-            return $"{e.CardId ?? ""}:{e.Attack}:{e.Health}:{string.Join(";", KeywordMap.From(e))}";
+            return $"{e.CardId ?? ""}:{e.Attack}:{e.Health}:{string.Join(";", KeywordMap.From(e).OrderBy(k => k))}";
         }
     }
 }

@@ -85,12 +85,7 @@ namespace BgsDataBridge.Projector
             return list;
         }
 
-        public List<BgsMinion> ProjectZone(List<Entity> es, bool includeText)
-        {
-            var list = new List<BgsMinion>(es.Count);
-            foreach (var e in es) list.Add(ToMinion(e, includeText));
-            return list;
-        }
+        public List<BgsMinion> ProjectZone(List<Entity> es, bool includeText) => Minions(es, includeText);
 
         // #1: shop offers use the card-definition mapper (ToShopOffer), NOT the
         // board's live-tag mapper (Minions/ToMinion).
