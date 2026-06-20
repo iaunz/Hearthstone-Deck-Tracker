@@ -48,6 +48,9 @@ namespace BgsDataBridge
         private readonly PhaseStateMachine _sm = new PhaseStateMachine();
         private ShopChangedDebouncer<ShopSnapshot> _shopDeb;
         // watcher 后台线程写、游戏线程读；单一 volatile 字段，持有最近一次商店快照引用。
+        // NOTE: OpponentBoardStateWatcher 按 EntityId+Hovered+MousedOverSlot 去重后才 fire
+        // （见 HearthWatcher/EventArgs/OpponentBoardArgs.Equals），故纯悬停变更也会移交一个新
+        // list 引用；但我们的指纹只看 turn:tier:cardIds、忽略 hover → 不会触发多余 Update。
         private volatile System.Collections.Generic.List<BoardCard> _lastShopCards;
         private string _lastShopFp;
         private SystemClock _clock;
@@ -88,11 +91,11 @@ namespace BgsDataBridge
             // doesn't permanently suppress the next MatchEnd.
             _matchEnded = false;
             _shopDeb = new ShopChangedDebouncer<ShopSnapshot>(_cfg.ShopChangedQuietMs, _clock);
-            // ShopChangedDebouncer.OnEmit fires once per settled shop state.
-            // We re-capture the shop-only view at emit time (cheap; one
-            // GetOpponentBoardState read) and build the C1 webhook data as a
-            // proper JSON OBJECT (anonymous {shop, turn, phase}) rather than
-            // a double-encoded JSON string.
+            // ShopChangedDebouncer.OnEmit hands us the ShopSnapshot captured at
+            // Update() time. ShopData(snap) projects its ShopView to BgsShop and
+            // uses snap.Turn/snap.Phase — NO re-capture at emit time. (The old
+            // design re-captured via GetOpponentBoardState at emit, by which point
+            // the shop was often empty/combat — the root cause of empty offers.)
             _shopDeb.OnEmit += snap => Emit(BridgeEventType.ShopChanged, ShopData(snap));
 
             // 商店事件驱动：watcher 在商店发牌/刷新/购买时触发 Change。
