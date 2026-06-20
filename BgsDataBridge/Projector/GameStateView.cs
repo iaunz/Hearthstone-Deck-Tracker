@@ -38,4 +38,13 @@ namespace BgsDataBridge.Projector
     public class ShopView { public int Tier; public bool? Frozen; public List<Entity> Offers = new List<Entity>(); }
     public class LastOpponentView { public int Turn; public Entity Hero; public List<Entity> Board = new List<Entity>(); }
     public class LobbyPlayerView { public string Name; public string HeroCardId; public string AccountId; }
+
+    // 热路径（OnUpdate 每 tick）返回值：玩家棋盘+手牌+tier，实体均已 Clone。
+    // 不调 HearthMirror（商店仍走 watcher 链路）；仅供 BoardChanged/HandChanged/TavernUpgraded 检测。
+    public class PlayerZonesView
+    {
+        public List<Entity> Board = new List<Entity>();
+        public List<Entity> Hand = new List<Entity>();
+        public int Tier;
+    }
 }

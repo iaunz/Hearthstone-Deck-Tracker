@@ -87,10 +87,8 @@ namespace BgsDataBridge.Projector
                 // I1: derive every per-player collection from the SNAPSHOT
                 // list filtered by controller+zone+kind — never via the live
                 // player.Board / player.Trinkets enumerables.
-                var board = Safe(() => entities
-                    .Where(x => x.IsControlledBy(pid) && x.IsInPlay && x.IsMinion)
-                    .Select(x => x.Clone()).ToList());
-                v.PlayerBoard = board ?? new List<Entity>();
+                v.PlayerBoard = Safe(() => ZoneExtractor.Board(entities, pid)) ?? new List<Entity>();
+                v.PlayerHand = Safe(() => ZoneExtractor.Hand(entities, pid)) ?? new List<Entity>();
 
                 // #3: prefer the real hero in PLAY (and cache it). At match end
                 // the hero leaves PLAY and the old fallback grabbed the placeholder
@@ -157,6 +155,29 @@ namespace BgsDataBridge.Projector
                 // consumers (HTTP /state, webhook) can distrust it.
                 v.Partial = true;
             }
+            return v;
+        }
+
+        /// <summary>
+        /// 热路径（OnUpdate 10Hz）：一次实体快照 → 玩家棋盘+手牌+tier。
+        /// 不调 HearthMirror（商店走 watcher 链路）；实体均 Clone，可跨 tick 持有。
+        /// 与 Capture() 共享 ZoneExtractor，但跳过 shop/lobby/lastOpponent 等重读取。
+        /// </summary>
+        public PlayerZonesView CapturePlayerZones()
+        {
+            var v = new PlayerZonesView();
+            try
+            {
+                var g = Hearthstone_Deck_Tracker.API.Core.Game;
+                var entities = CaptureEntitiesSnapshot(g);
+                int? playerId = null;
+                try { playerId = g.Player.Id; } catch { }
+                int pid = playerId ?? -1;
+                v.Board = ZoneExtractor.Board(entities, pid);
+                v.Hand = ZoneExtractor.Hand(entities, pid);
+                v.Tier = ReadTechLevel(g);
+            }
+            catch { /* 保持空 view；OnUpdate 的调用方容错 */ }
             return v;
         }
 
