@@ -67,7 +67,11 @@ namespace BgsDataBridge.Projector
                 v.PlayerBoard = board ?? new List<Entity>();
 
                 v.Hero = Safe(() => entities
-                    .FirstOrDefault(x => x.IsControlledBy(pid) && x.IsInPlay && x.IsHero)?.Clone());
+                        .FirstOrDefault(x => x.IsControlledBy(pid) && x.IsInPlay && x.IsHero)?.Clone())
+                    // 问题 #4：对局结束清场时英雄可能已离开 PLAY 区；回退到任意我方
+                    // 英雄实体（玩家只控制一个英雄，安全）。仍为空则照旧省略字段。
+                    ?? Safe(() => entities
+                        .FirstOrDefault(x => x.IsControlledBy(pid) && x.IsHero)?.Clone());
 
                 v.HeroPower = Safe(() => entities
                     .FirstOrDefault(x => x.IsHeroPower && x.IsControlledBy(pid))?.Clone());
