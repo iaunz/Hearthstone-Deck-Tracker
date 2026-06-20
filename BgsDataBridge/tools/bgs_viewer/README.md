@@ -14,7 +14,7 @@
    设为 `http://localhost:5000/events`（可与 receiver.py 并存，插件支持多 URL）。
 3. 浏览器打开 `http://localhost:5000/`。
 
-默认每 1.5s 由浏览器直连插件 `http://localhost:5273/state` 取最新快照（插件已开
+默认每 1s 由浏览器直连插件 `http://localhost:5273/state` 取最新快照（插件已开
 CORS）。用 `--no-state-poll` 关闭，仅靠 webhook。
 
 ## 回放模式

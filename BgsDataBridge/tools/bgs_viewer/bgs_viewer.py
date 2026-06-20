@@ -57,6 +57,8 @@ def index():
 
 @app.route("/events", methods=["POST"])
 def post_events():
+    if CONFIG["mode"] != "live":
+        return jsonify({"error": "webhook disabled in replay mode"}), 404
     raw = request.get_data(cache=True)
     try:
         env = json.loads(raw.decode("utf-8")) if raw else {}
