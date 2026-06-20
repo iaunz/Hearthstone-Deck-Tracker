@@ -4,11 +4,14 @@
 BgsDataBridge webhook 接收器 —— 把插件推送的事件以清晰文本打印到控制台。
 
 用法:
-  python receiver.py                       # 监听 :8000, 不校验签名
+  python receiver.py                       # 监听 :8000, 文本日志写 bgs-events.log
   python receiver.py --port 9000           # 自定义端口
   python receiver.py --host 127.0.0.1      # 自定义主机
   python receiver.py --secret MY_SECRET    # 校验 X-BgsBridge-Signature (HMAC-SHA256 hex)
   python receiver.py --raw                 # 额外打印原始 JSON body
+  python receiver.py --no-log              # 不写文本日志文件
+  python receiver.py --log events.log      # 自定义文本日志路径
+  python receiver.py --jsonlog events.jsonl  # 额外写 NDJSON 机器日志 (每行一事件)
 
 然后在 HDT 插件设置窗里把 webhook URL 设为 http://localhost:8000/ (或对应端口)。
 
@@ -19,6 +22,8 @@ import argparse
 import hashlib
 import hmac
 import json
+import os
+import re
 import sys
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -48,6 +53,8 @@ def red(t):    return c(t, "31")
 def magenta(t):return c(t, "35")
 
 SEP = "─" * 64
+# 用于把写进日志文件的文本里的 ANSI 颜色码剥掉 (日志要纯文本)
+ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 
 # ── 渲染 ────────────────────────────────────────────────────────────────
 def render_minion(m, idx=None):
@@ -191,20 +198,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def _print_event(self, raw, sig_ok, sig):
         now = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        print()
-        print(c(SEP, "90"))
+        L = ["", c(SEP, "90")]
         ts = dim(now)
         if sig_ok is True:
             ts += "  " + green("✓ sig")
         elif sig_ok is False:
             ts += "  " + red(f"✗ sig mismatch (got {sig})")
-        print(f"{ts}  ← {bold(self.path)}")
+        L.append(f"{ts}  ← {bold(self.path)}")
 
         try:
             env = json.loads(raw.decode("utf-8")) if raw else {}
         except Exception as e:
-            print(red(f"  解析 JSON 失败: {e}"))
-            print(f"  raw: {raw!r}")
+            L.append(red(f"  解析 JSON 失败: {e}"))
+            L.append(f"  raw: {raw!r}")
+            self._emit(L, env=None, raw=raw)
             return
 
         seq = env.get("seq")
@@ -213,22 +220,46 @@ class Handler(BaseHTTPRequestHandler):
         head = f"  #{seq}  {bold(cyan(event or '?'))}"
         if at:
             head += f"   {dim(at)}"
-        print(head)
+        L.append(head)
 
-        print(render_match(env.get("match")))
+        L.append(render_match(env.get("match")))
 
-        data = env.get("data")
-        print(render_data(data))
+        L.append(render_data(env.get("data")))
 
         if self.server.opts.get("raw"):
-            print(f"  {dim('── raw body ──')}")
+            L.append(f"  {dim('── raw body ──')}")
             try:
                 txt = json.dumps(env, ensure_ascii=False, indent=2)
             except Exception:
                 txt = raw.decode("utf-8", "replace")
-            print("\n".join("    " + ln for ln in txt.splitlines()))
+            L.append("\n".join("    " + ln for ln in txt.splitlines()))
 
+        self._emit(L, env=env, raw=raw)
+
+    def _emit(self, lines, env, raw):
+        """把一次事件分发到: 控制台(带色) + 文本日志(去色) + NDJSON 日志。"""
+        text = "\n".join(lines)
+        # 控制台 (带颜色)
+        print(text)
         sys.stdout.flush()
+
+        opts = self.server.opts
+        # 人类可读文本日志 (剥掉 ANSI 颜色码)
+        hlog = opts.get("log")
+        if hlog:
+            try:
+                with open(hlog, "a", encoding="utf-8") as f:
+                    f.write(ANSI_RE.sub("", text) + "\n")
+            except Exception as e:
+                sys.stderr.write(f"[文本日志写入失败: {e}]\n")
+        # 机器可读 NDJSON 日志 (每个事件一行 JSON, 便于后续分析/回放)
+        jlog = opts.get("jsonlog")
+        if jlog and env is not None:
+            try:
+                with open(jlog, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(env, ensure_ascii=False) + "\n")
+            except Exception as e:
+                sys.stderr.write(f"[NDJSON 日志写入失败: {e}]\n")
 
 
 def main():
@@ -237,10 +268,17 @@ def main():
     ap.add_argument("--port", type=int, default=8000, help="监听端口 (默认 8000)")
     ap.add_argument("--secret", default=None, help="校验 X-BgsBridge-Signature 的共享密钥")
     ap.add_argument("--raw", action="store_true", help="额外打印完整原始 JSON body")
+    ap.add_argument("--log", default="bgs-events.log",
+                    help="人类可读文本日志路径 (默认 bgs-events.log; 用 --no-log 关闭)")
+    ap.add_argument("--no-log", action="store_true", help="不写人类可读文本日志文件")
+    ap.add_argument("--jsonlog", default=None,
+                    help="机器可读 NDJSON 日志路径 (每行一个事件 JSON); 默认不写")
     args = ap.parse_args()
 
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
-    srv.opts = {"secret": args.secret, "raw": args.raw}
+    log_path = None if args.no_log else os.path.abspath(args.log)
+    jsonlog_path = os.path.abspath(args.jsonlog) if args.jsonlog else None
+    srv.opts = {"secret": args.secret, "raw": args.raw, "log": log_path, "jsonlog": jsonlog_path}
 
     print(bold("BgsDataBridge webhook 接收器"))
     print(f"  监听: http://{args.host}:{args.port}/")
@@ -248,6 +286,12 @@ def main():
         print(f"  签名校验: {green('开启')}")
     if args.raw:
         print(f"  原始 JSON: {dim('开启')}")
+    if log_path:
+        print(f"  文本日志: {log_path}")
+    else:
+        print(f"  文本日志: {dim('关闭 (--no-log)')}")
+    if jsonlog_path:
+        print(f"  NDJSON 日志: {jsonlog_path}")
     print(f"  {dim('在插件设置窗把 webhook URL 指向这里, Ctrl+C 终止')}")
     print()
     try:
