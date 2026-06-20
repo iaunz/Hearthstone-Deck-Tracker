@@ -115,33 +115,6 @@ namespace BgsDataBridge.Projector
         }
 
         /// <summary>
-        /// I3: shop-only capture for the 10Hz shop poll path. Reads only
-        /// <c>GetOpponentBoardState()</c> + turn/phase. Returns null when not
-        /// in a BGs shopping phase (the caller treats null as "no shop to
-        /// report"). The returned view has only Shop/Turn/Phase/InMatch/
-        /// IsBattlegrounds populated — Projector.Project tolerates the rest
-        /// being unset.
-        /// </summary>
-        public GameStateView CaptureShopOnly()
-        {
-            var v = new GameStateView { InMatch = false };
-            try
-            {
-                var g = Hearthstone_Deck_Tracker.API.Core.Game;
-                v.InMatch = !g.IsInMenu;
-                v.IsBattlegrounds = g.IsBattlegroundsMatch;
-                v.Turn = g.GetTurnNumber();
-                v.Phase = DerivePhase(g);
-                v.Shop = Safe(CaptureShop);
-            }
-            catch
-            {
-                v.Partial = true;
-            }
-            return v;
-        }
-
-        /// <summary>
         /// I1: snapshot the live Entities dictionary into a local list with
         /// one retry on the concurrent-mutation race. The retry is bounded
         /// (single re-attempt); persistent failure is allowed to propagate to

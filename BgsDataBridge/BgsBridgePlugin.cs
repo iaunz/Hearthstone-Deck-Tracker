@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows.Controls;
 using BgsDataBridge.Config;
@@ -10,7 +11,9 @@ using BgsDataBridge.Projector;
 using BgsDataBridge.Settings;
 using BgsDataBridge.Webhook;
 using HearthDb.Enums;
+using HearthMirror.Objects;
 using Hearthstone_Deck_Tracker.API;
+using Hearthstone_Deck_Tracker.Hearthstone.Entities;
 using Hearthstone_Deck_Tracker.Plugins;
 
 namespace BgsDataBridge
@@ -43,7 +46,10 @@ namespace BgsDataBridge
         private BridgeHttpServer _http;
         private WebhookDispatcher _webhook;
         private readonly PhaseStateMachine _sm = new PhaseStateMachine();
-        private ShopChangedDebouncer<string> _shopDeb;
+        private ShopChangedDebouncer<ShopSnapshot> _shopDeb;
+        // watcher 后台线程写、游戏线程读；单一 volatile 字段，持有最近一次商店快照引用。
+        private volatile System.Collections.Generic.List<BoardCard> _lastShopCards;
+        private string _lastShopFp;
         private SystemClock _clock;
         private HttpSender _sender;
         private HdtGameSource _source;
@@ -81,13 +87,18 @@ namespace BgsDataBridge
             // M9: re-arm MatchEnd guard on (re)load so a mid-match reload
             // doesn't permanently suppress the next MatchEnd.
             _matchEnded = false;
-            _shopDeb = new ShopChangedDebouncer<string>(_cfg.ShopChangedQuietMs, _clock);
+            _shopDeb = new ShopChangedDebouncer<ShopSnapshot>(_cfg.ShopChangedQuietMs, _clock);
             // ShopChangedDebouncer.OnEmit fires once per settled shop state.
             // We re-capture the shop-only view at emit time (cheap; one
             // GetOpponentBoardState read) and build the C1 webhook data as a
             // proper JSON OBJECT (anonymous {shop, turn, phase}) rather than
             // a double-encoded JSON string.
-            _shopDeb.OnEmit += payload => Emit(BridgeEventType.ShopChanged, ShopData());
+            _shopDeb.OnEmit += snap => Emit(BridgeEventType.ShopChanged, ShopData(snap));
+
+            // 商店事件驱动：watcher 在商店发牌/刷新/购买时触发 Change。
+            // 与 GameEvents 不同，Watchers.*.Change 是普通 C# 事件，不随插件禁用自动解绑，
+            // 故 OnUnload 必须手动 -=（否则禁用→启用会重复订阅、重复触发）。
+            Hearthstone_Deck_Tracker.Hearthstone.Watchers.OpponentBoardStateWatcher.Change += OnShopBoardChange;
 
             var routes = new RouteDispatcher(_source, _projector);
             _http = new BridgeHttpServer(_cfg, routes);
@@ -147,20 +158,40 @@ namespace BgsDataBridge
                     Emit(ev.Type, data);
                 }
 
-                // Shop debouncer: poll the shop only while in a BGs shopping phase.
-                // I3: CaptureShopOnly() skips lobby/races/rating/board/lastOpponent
-                // (the heavy reads) — only GetOpponentBoardState + turn/phase.
-                // The debouncer's payload string is a cheap fingerprint for
-                // change detection; the actual webhook DTO is rebuilt at emit
-                // time (see ShopData) so C1 gets a clean projected BgsShop.
-                if (g.IsBattlegroundsMatch && !g.IsBattlegroundsCombatPhase && !g.IsInMenu)
+                // 商店事件驱动：从 watcher 移交的最新快照（_lastShopCards）在游戏线程
+                // 做全部判定与去抖。仅在购物相、非空时喂（空商店不发 → 无空载荷噪声）；
+                // Shop→Combat 切换时 Reset（丢弃未发完的 pending，避免战斗开始时的陈旧发）。
+                bool inShop = g.IsBattlegroundsMatch && !g.IsBattlegroundsCombatPhase && !g.IsInMenu;
+                var cards = _lastShopCards;
+                if(inShop && cards != null && ShopFeedPolicy.ShouldFeed(cards.Count, true))
                 {
-                    var fp = ShopFingerprint();
-                    if (fp != null) _shopDeb.Update(fp, _clock.NowMs);
+                    var sv = new ShopView { Tier = HdtGameSource.ReadTechLevel(g), Frozen = null };
+                    foreach(var bc in cards) sv.Offers.Add(new Entity { CardId = bc.CardId });
+                    var fp = g.GetTurnNumber() + ":" + sv.Tier + ":"
+                           + string.Join(",", cards.Select(c => c.CardId ?? ""));
+                    if(fp != _lastShopFp)
+                    {
+                        _lastShopFp = fp;
+                        _shopDeb.Update(new ShopSnapshot { Shop = sv, Turn = g.GetTurnNumber(), Phase = "Shop" },
+                                        _clock.NowMs);
+                    }
+                }
+                else if(!inShop && _lastShopFp != null)
+                {
+                    _shopDeb.Reset();
+                    _lastShopFp = null;
+                    _lastShopCards = null;
                 }
                 _shopDeb.Tick();
             }
             catch (Exception ex) { Logger.Error("OnUpdate: " + ex.Message); }
+        }
+
+        // watcher 后台线程回调：仅移交最新商店快照引用。零 Core.Game 访问、零逻辑。
+        // BoardCards 每次 fire 都是新 list（HearthMirror 返回新对象），跨线程持有安全。
+        void OnShopBoardChange(object sender, HearthWatcher.EventArgs.OpponentBoardArgs args)
+        {
+            _lastShopCards = args.BoardCards;
         }
 
         void OnGameStart()
@@ -221,47 +252,15 @@ namespace BgsDataBridge
             catch { return null; }
         }
 
-        // Cheap fingerprint for ShopChangedDebouncer's change detection. The
-        // debouncer only compares string equality, so a joined cardId list +
-        // tier is enough to detect "shop contents changed". Returns null when
-        // no shop is currently on screen (debouncer treats null as "no update").
-        string ShopFingerprint()
+        // 由 pending ShopSnapshot 构造 ShopChanged webhook data：投影 shop → BgsShop，
+        // 直接用快照里的 turn/phase。不再 CaptureShopOnly 重捕获（那是 offers 丢失的根因）。
+        object ShopData(ShopSnapshot snap)
         {
             try
             {
-                var v = _source.CaptureShopOnly();
-                if (v?.Shop?.Offers == null || v.Shop.Offers.Count == 0) return null;
-                var ids = new System.Text.StringBuilder();
-                ids.Append(v.Turn).Append(':').Append(v.Shop.Tier).Append(':');
-                foreach (var e in v.Shop.Offers) ids.Append(e.CardId ?? "").Append(',');
-                return ids.ToString();
-            }
-            catch { return null; }
-        }
-
-        // C1 + I3: build the ShopChanged webhook data as a proper JSON OBJECT
-        // {shop, turn, phase} where shop is a *projected* BgsShop DTO (clean
-        // cardId/attack/health/keywords), NOT the raw ShopView (which holds
-        // Entity objects with tag dicts). CaptureShopOnly() reads only the
-        // shop slice at emit time; Project(_, false) maps it to BgsShop.
-        object ShopData()
-        {
-            try
-            {
-                var v = _source.CaptureShopOnly();
-                if (v?.Shop == null) return new {};
-                // Minimal view for projection: only Shop + InMatch + IsBattlegrounds
-                // matter for snap.Shop. includeText=false keeps the payload small.
-                var view = new GameStateView
-                {
-                    Shop = v.Shop,
-                    InMatch = true,
-                    IsBattlegrounds = true,
-                    Turn = v.Turn,
-                    Phase = v.Phase
-                };
-                var snap = _projector.Project(view, false);
-                return new { shop = snap.Shop, turn = v.Turn, phase = v.Phase };
+                if(snap?.Shop == null) return new {};
+                var shop = _projector.ProjectShop(snap.Shop, false);
+                return new { shop = shop, turn = snap.Turn, phase = snap.Phase };
             }
             catch { return new {}; }
         }
@@ -313,6 +312,7 @@ namespace BgsDataBridge
         {
             // Idempotent + balanced: every step is null-guarded and wrapped so
             // re-entry (ReloadConfig, double-disable) is a safe no-op.
+            try { Hearthstone_Deck_Tracker.Hearthstone.Watchers.OpponentBoardStateWatcher.Change -= OnShopBoardChange; } catch { /* 已解绑 */ }
             try { _shopDeb?.Flush(); } catch (Exception ex) { Logger.Error("shop flush: " + ex.Message); }
             try { _webhook?.Stop(3000); } catch (Exception ex) { Logger.Error("webhook stop: " + ex.Message); }
             try { _webhook?.Dispose(); } catch { /* Dispose may double-throw after Stop; ignore */ }

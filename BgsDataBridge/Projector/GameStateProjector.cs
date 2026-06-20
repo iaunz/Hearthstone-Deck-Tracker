@@ -25,8 +25,7 @@ namespace BgsDataBridge.Projector
                 },
                 AvailableRaces = v.AvailableRaces ?? new List<string>(),
                 Player = ProjectPlayer(v, includeText),
-                Shop = v.Shop != null ? new BgsShop { Available = true, Tier = v.Shop.Tier,
-                    Frozen = v.Shop.Frozen, Offers = Minions(v.Shop.Offers, includeText) } : null,
+                Shop = ProjectShop(v.Shop, includeText),
                 LastOpponent = v.LastOpponent != null ? new BgsLastOpponent { Turn = v.LastOpponent.Turn,
                     Hero = v.LastOpponent.Hero != null ? new BgsCardRef { CardId = v.LastOpponent.Hero.CardId, Name = NameOf(v.LastOpponent.Hero) } : null,
                     Board = Minions(v.LastOpponent.Board, includeText) } : null,
@@ -68,6 +67,10 @@ namespace BgsDataBridge.Projector
             foreach (var e in es) list.Add(ToMinion(e, includeText));
             return list;
         }
+
+        public BgsShop ProjectShop(ShopView shop, bool includeText)
+            => shop != null ? new BgsShop { Available = true, Tier = shop.Tier,
+                Frozen = shop.Frozen, Offers = Minions(shop.Offers, includeText) } : null;
         static List<BgsLobbyPlayer> LobbyOf(List<LobbyPlayerView> src)
         {
             var list = new List<BgsLobbyPlayer>(src.Count);

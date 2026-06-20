@@ -11,7 +11,6 @@ namespace BgsDataBridge.Tests.Http
         class FakeSource : IGameSource
         {
             public GameStateView Capture() => new GameStateView { InMatch = true, IsBattlegrounds = true, Phase = "Shop", Turn = 2 };
-            public GameStateView CaptureShopOnly() => new GameStateView { InMatch = true, IsBattlegrounds = true, Phase = "Shop", Turn = 2 };
         }
 
         [TestMethod]
