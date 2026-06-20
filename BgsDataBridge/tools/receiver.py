@@ -4,7 +4,7 @@
 BgsDataBridge webhook 接收器 —— 把插件推送的事件以清晰文本打印到控制台。
 
 用法:
-  python receiver.py                       # 监听 :8000, 文本日志写 bgs-events.log
+  python receiver.py                       # 监听 :8000, 文本日志写 bgs-events-<时间戳>.log
   python receiver.py --port 9000           # 自定义端口
   python receiver.py --host 127.0.0.1      # 自定义主机
   python receiver.py --secret MY_SECRET    # 校验 X-BgsBridge-Signature (HMAC-SHA256 hex)
@@ -268,8 +268,8 @@ def main():
     ap.add_argument("--port", type=int, default=8000, help="监听端口 (默认 8000)")
     ap.add_argument("--secret", default=None, help="校验 X-BgsBridge-Signature 的共享密钥")
     ap.add_argument("--raw", action="store_true", help="额外打印完整原始 JSON body")
-    ap.add_argument("--log", default="bgs-events.log",
-                    help="人类可读文本日志路径 (默认 bgs-events.log; 用 --no-log 关闭)")
+    ap.add_argument("--log", default=f"bgs-events-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log",
+                    help="人类可读文本日志路径 (默认 bgs-events-<时间戳>.log; 用 --no-log 关闭)")
     ap.add_argument("--no-log", action="store_true", help="不写人类可读文本日志文件")
     ap.add_argument("--jsonlog", default=None,
                     help="机器可读 NDJSON 日志路径 (每行一个事件 JSON); 默认不写")
