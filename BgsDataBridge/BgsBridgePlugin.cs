@@ -9,6 +9,7 @@ using BgsDataBridge.Http;
 using BgsDataBridge.Projector;
 using BgsDataBridge.Settings;
 using BgsDataBridge.Webhook;
+using HearthDb.Enums;
 using Hearthstone_Deck_Tracker.API;
 using Hearthstone_Deck_Tracker.Plugins;
 
@@ -126,7 +127,9 @@ namespace BgsDataBridge
                     IsBattlegroundsMatch = g.IsBattlegroundsMatch,
                     IsInMenu = g.IsInMenu,
                     IsCombatPhase = g.IsBattlegroundsCombatPhase,
-                    HeroPickActive = !g.IsBattlegroundsHeroPickingDone,
+                    HeroPickActive = HeroPickPhase.IsActive(g.IsBattlegroundsMatch, g.IsInMenu,
+                        g.GameEntity?.GetTag(GameTag.STEP) ?? int.MaxValue,
+                        (int)Step.BEGIN_MULLIGAN),
                     // TrinketPickActive deferred (spec §11 open item #2): real
                     // detection would hook ChoicesWatcher; v1 leaves it false.
                     TrinketPickActive = false

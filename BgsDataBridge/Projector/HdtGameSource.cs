@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BgsDataBridge.Core;
 using HearthDb.Enums;
 using Hearthstone_Deck_Tracker.API;
 using Hearthstone_Deck_Tracker.Hearthstone;
@@ -162,8 +163,11 @@ namespace BgsDataBridge.Projector
                 return g.IsInMenu ? "None" : "Other";
             if (g.IsInMenu)
                 return "None";
-            // Hero-pick is not done yet -> still in the picking phase.
-            if (g.IsBattlegroundsHeroPickingDone == false)
+            // 英雄选择相位：用 STEP 硬门（游戏实体 tag，单调），避免玩家实体瞬时
+            // 缺失导致旧的 IsBattlegroundsHeroPickingDone 误判（问题 #2）。
+            if (HeroPickPhase.IsActive(g.IsBattlegroundsMatch, g.IsInMenu,
+                    g.GameEntity?.GetTag(GameTag.STEP) ?? int.MaxValue,
+                    (int)Step.BEGIN_MULLIGAN))
                 return "HeroPick";
             if (g.IsBattlegroundsCombatPhase)
                 return "Combat";
