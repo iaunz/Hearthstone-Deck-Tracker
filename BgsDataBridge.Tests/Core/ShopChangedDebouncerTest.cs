@@ -13,7 +13,7 @@ namespace BgsDataBridge.Tests.Core
         public void Emits_After_Quiet_Period()
         {
             var clock = new FakeClock();
-            var db = new ShopChangedDebouncer(quietMs: 400, clock);
+            var db = new ShopChangedDebouncer<string>(quietMs: 400, clock);
             var emitted = new List<string>();
             db.OnEmit += s => emitted.Add(s);
 
@@ -30,7 +30,7 @@ namespace BgsDataBridge.Tests.Core
         public void Coalesces_Rapid_Changes_To_Final()
         {
             var clock = new FakeClock();
-            var db = new ShopChangedDebouncer(400, clock);
+            var db = new ShopChangedDebouncer<string>(400, clock);
             var emitted = new List<string>();
             db.OnEmit += s => emitted.Add(s);
 
@@ -46,7 +46,7 @@ namespace BgsDataBridge.Tests.Core
         public void Flush_Emits_Pending_Immediately()
         {
             var clock = new FakeClock();
-            var db = new ShopChangedDebouncer(400, clock);
+            var db = new ShopChangedDebouncer<string>(400, clock);
             var emitted = new List<string>();
             db.OnEmit += s => emitted.Add(s);
             db.Update("X", 0);
@@ -59,11 +59,24 @@ namespace BgsDataBridge.Tests.Core
         public void No_Emit_When_No_Change()
         {
             var clock = new FakeClock();
-            var db = new ShopChangedDebouncer(400, clock);
+            var db = new ShopChangedDebouncer<string>(400, clock);
             var n = 0;
             db.OnEmit += s => n++;
             clock.Now = 5000; db.Tick();
             Assert.AreEqual(0, n);
+        }
+
+        [TestMethod]
+        public void Reset_Clears_Pending_And_Prevents_Emit()
+        {
+            var clock = new FakeClock();
+            var db = new ShopChangedDebouncer<string>(400, clock);
+            var n = 0;
+            db.OnEmit += s => n++;
+            db.Update("A", 0);
+            db.Reset();                      // Shop→Combat：丢弃 pending
+            clock.Now = 9999; db.Tick();     // 即使静默足够久
+            Assert.AreEqual(0, n);           // 也不发
         }
     }
 }

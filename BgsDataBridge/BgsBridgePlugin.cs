@@ -42,7 +42,7 @@ namespace BgsDataBridge
         private BridgeHttpServer _http;
         private WebhookDispatcher _webhook;
         private readonly PhaseStateMachine _sm = new PhaseStateMachine();
-        private ShopChangedDebouncer _shopDeb;
+        private ShopChangedDebouncer<string> _shopDeb;
         private SystemClock _clock;
         private HttpSender _sender;
         private HdtGameSource _source;
@@ -80,7 +80,7 @@ namespace BgsDataBridge
             // M9: re-arm MatchEnd guard on (re)load so a mid-match reload
             // doesn't permanently suppress the next MatchEnd.
             _matchEnded = false;
-            _shopDeb = new ShopChangedDebouncer(_cfg.ShopChangedQuietMs, _clock);
+            _shopDeb = new ShopChangedDebouncer<string>(_cfg.ShopChangedQuietMs, _clock);
             // ShopChangedDebouncer.OnEmit fires once per settled shop state.
             // We re-capture the shop-only view at emit time (cheap; one
             // GetOpponentBoardState read) and build the C1 webhook data as a
