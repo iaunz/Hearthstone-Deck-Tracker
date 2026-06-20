@@ -1,16 +1,36 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8">
-<title>BgsViewer</title></head>
-<body>
-<h1>BgsViewer</h1>
-<p>mode={{ mode }} · statePoll={{ state_poll }} · stateUrl={{ state_url }}</p>
-<pre id="dump">加载中…</pre>
-<script>
-fetch("/api/mode").then(r=>r.json()).then(m=>{
-  fetch("/api/events").then(r=>r.json()).then(ev=>{
-    document.getElementById("dump").textContent =
-      "mode="+JSON.stringify(m)+"\nevents="+ev.length;
-  });
-});
-</script>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BgsViewer · 酒馆战棋对局</title>
+<link rel="stylesheet" href="/static/dashboard.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body data-mode="{{ mode }}" data-state-url="{{ state_url }}" data-state-poll="{{ state_poll }}">
+<header id="topbar"></header>
+<section id="current">
+  <div class="col"><h2>YOUR BOARD</h2><div id="board" class="cards"></div>
+    <div id="hero" class="hero"></div></div>
+  <div class="col"><h2>SHOP</h2><div id="shop" class="cards"></div>
+    <div id="extras"></div></div>
+  <div class="col"><h2>LAST OPPONENT</h2><div id="opponent" class="cards"></div>
+    <div id="opponent-hero"></div></div>
+</section>
+<section id="timeline"><h2>ROUND TIMELINE</h2><div id="rounds"></div>
+  <div id="controls">
+    <button id="prev">◀</button><button id="play">▶</button>
+    <button id="next">▶|</button>
+    <input id="scrub" type="range" min="0" max="0" value="0">
+    <select id="speed"><option value="1000">1×</option><option value="500">2×</option><option value="250">4×</option></select>
+    <span id="pos"></span>
+  </div>
+</section>
+<section id="bottom">
+  <div id="eventstream"><h2>EVENTS</h2><ul id="evlist"></ul></div>
+  <div id="progression"><h2>PROGRESSION</h2>
+    <canvas id="chartHp"></canvas><canvas id="chartAtk"></canvas><canvas id="chartTier"></canvas></div>
+</section>
+<aside id="drawer" class="hidden"><button id="drawer-close">×</button><pre id="drawer-json"></pre></aside>
+<script src="/static/dashboard.js"></script>
 </body></html>

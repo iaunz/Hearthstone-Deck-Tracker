@@ -1,0 +1,46 @@
+:root{--bg:#14171c;--panel:#1d2128;--ink:#e6e6e6;--dim:#8a93a3;
+  --accent:#5b9cff;--gold:#e3b341;--taunt:#b07a3a;--ds:#e3b341;
+  --pois:#4caf50;--venom:#9c5fd4;--reborn:#2fb3a5;--wind:#3a7bd5;
+  --stealth:#7a7a7a;--frozen:#5ec8e0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.4 -apple-system,Segoe UI,Roboto,Microsoft YaHei,sans-serif}
+h2{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin:8px 0 4px}
+#topbar{padding:8px 12px;background:var(--panel);border-bottom:1px solid #2a2f38;
+  display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#topbar .hero-name{font-weight:600;font-size:16px}
+#topbar .chip{background:#2a2f38;border-radius:10px;padding:1px 8px;font-size:12px}
+#topbar .race{background:#243049;color:#9fc2ff}
+#topbar .badge-off{color:var(--dim)}
+#current{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:10px}
+.col{background:var(--panel);border-radius:8px;padding:8px}
+.cards{display:flex;flex-wrap:wrap;gap:6px;min-height:20px}
+.card{background:#262b34;border:1px solid #333a45;border-radius:6px;
+  padding:4px 6px;min-width:96px}
+.card .nm{font-weight:600;font-size:12px}
+.card .st{color:var(--gold)}
+.card.gold{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+.kw{font-size:10px;border-radius:3px;padding:0 4px;margin-right:3px;display:inline-block}
+.k-TAUNT{background:var(--taunt);color:#fff}.k-DIVINE_SHIELD{background:var(--ds);color:#000}
+.k-POISONOUS{background:var(--pois);color:#000}.k-VENOMOUS{background:var(--venom);color:#fff}
+.k-REBORN{background:var(--reborn);color:#000}.k-WINDFURY{background:var(--wind);color:#fff}
+.k-STEALTH{background:var(--stealth);color:#fff}.k-FROZEN{background:var(--frozen);color:#000}
+.hero{margin-top:6px;color:var(--dim);font-size:12px}
+#extras,#opponent-hero{margin-top:6px;font-size:12px;color:var(--dim)}
+#timeline,#bottom{padding:10px;border-top:1px solid #2a2f38}
+#rounds{display:flex;gap:6px;flex-wrap:wrap}
+.round{background:#2a2f38;border-radius:14px;padding:3px 12px;cursor:pointer;font-size:13px}
+.round.cur{background:var(--accent);color:#fff}
+#controls{display:flex;gap:8px;align-items:center;margin-top:8px}
+#scrub{flex:1}
+#bottom{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#evlist{list-style:none;margin:0;padding:0;max-height:240px;overflow:auto}
+#evlist li{padding:3px 6px;cursor:pointer;border-radius:4px;font-size:12px}
+#evlist li:hover{background:#2a2f38}
+#progression canvas{max-height:120px}
+#drawer{position:fixed;top:0;right:0;width:46%;height:100%;background:#0f1115;
+  border-left:1px solid #2a2f38;padding:12px;overflow:auto}
+#drawer.hidden{display:none}
+#drawer-json{white-space:pre-wrap;font:12px/1.4 ui-monospace,Consolas,monospace;color:#cdd}
+#drawer-close{position:absolute;top:8px;right:12px;font-size:20px;background:none;color:var(--ink);border:0;cursor:pointer}
+button,select,input{background:#2a2f38;color:var(--ink);border:1px solid #333a45;border-radius:4px;padding:2px 8px}
