@@ -55,5 +55,30 @@ namespace BgsDataBridge.Tests.Projector
             var snap = new GameStateProjector().Project(view, false);
             CollectionAssert.Contains(snap.Player.Board[0].Keywords, "VENOMOUS");
         }
+
+        [TestMethod]
+        public void Projects_Player_Hand_From_View()
+        {
+            var view = new GameStateView
+            {
+                InMatch = true, IsBattlegrounds = true,
+                PlayerBoard = new List<Entity>(),
+                PlayerHand = new List<Entity> { Minion("BACON_H", 2, 2) }
+            };
+            var snap = new GameStateProjector().Project(view, includeText: false);
+            Assert.AreEqual(1, snap.Player.Hand.Count);
+            Assert.AreEqual("BACON_H", snap.Player.Hand[0].CardId);
+            Assert.AreEqual(2, snap.Player.Hand[0].Attack);
+        }
+
+        [TestMethod]
+        public void ProjectZone_Maps_Entities_To_Minions()
+        {
+            var zone = new List<Entity> { Minion("Z1", 3, 4, true) };
+            var minions = new GameStateProjector().ProjectZone(zone, includeText: false);
+            Assert.AreEqual(1, minions.Count);
+            Assert.AreEqual("Z1", minions[0].CardId);
+            CollectionAssert.Contains(minions[0].Keywords, "TAUNT");
+        }
     }
 }

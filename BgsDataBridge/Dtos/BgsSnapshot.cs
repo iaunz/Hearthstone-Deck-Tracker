@@ -62,6 +62,7 @@ namespace BgsDataBridge.Dtos
         [JsonProperty("trinkets")] public List<BgsTrinket> Trinkets { get; set; } = new List<BgsTrinket>();
         [JsonProperty("questReward")] public BgsQuestReward QuestReward { get; set; }
         [JsonProperty("board")] public List<BgsMinion> Board { get; set; } = new List<BgsMinion>();
+        [JsonProperty("hand")] public List<BgsMinion> Hand { get; set; } = new List<BgsMinion>();
     }
     public class BgsTrinket : BgsCardRef { [JsonProperty("slot")] public string Slot { get; set; } }
     public class BgsQuestReward : BgsCardRef

@@ -45,6 +45,7 @@ namespace BgsDataBridge.Projector
                 p.Trinkets.Add(ToTrinket(v.Trinkets[i], (i + 1).ToString()));
             if (v.QuestReward != null) p.QuestReward = ToQuestReward(v);
             foreach (var e in v.PlayerBoard) p.Board.Add(ToMinion(e, includeText));
+            foreach (var e in v.PlayerHand) p.Hand.Add(ToMinion(e, includeText));
             return p;
         }
 
@@ -78,6 +79,13 @@ namespace BgsDataBridge.Projector
           Progress = v.QuestProgress, Total = v.QuestTotal };
 
         List<BgsMinion> Minions(List<Entity> es, bool includeText)
+        {
+            var list = new List<BgsMinion>(es.Count);
+            foreach (var e in es) list.Add(ToMinion(e, includeText));
+            return list;
+        }
+
+        public List<BgsMinion> ProjectZone(List<Entity> es, bool includeText)
         {
             var list = new List<BgsMinion>(es.Count);
             foreach (var e in es) list.Add(ToMinion(e, includeText));

@@ -29,6 +29,7 @@ namespace BgsDataBridge.Projector
         public List<Entity> Trinkets = new List<Entity>();
         public Entity QuestReward; public int? QuestProgress; public int? QuestTotal;
         public List<Entity> PlayerBoard = new List<Entity>();
+        public List<Entity> PlayerHand = new List<Entity>();
 
         public ShopView Shop;
         public LastOpponentView LastOpponent;
