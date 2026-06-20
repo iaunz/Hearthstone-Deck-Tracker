@@ -104,5 +104,34 @@ namespace BgsDataBridge.Tests.Dtos
             Assert.AreEqual(5, (int)sc["data"]["turn"]);
             Assert.AreEqual("Shop", (string)sc["data"]["phase"]);
         }
+
+        // §4.2: phase/lifecycle events (MatchStart/MatchEnd/ShopPhaseStart/
+        // CombatPhaseStart) carry the FULL snapshot in `data`, so the consumer
+        // gets board/shop/hero context at decision points. Locks that a
+        // BgsSnapshot-typed Data serializes with its nested fields (not {}).
+        [TestMethod]
+        public void Envelope_Data_Carries_FullSnapshot_ForPhaseEvents()
+        {
+            var snap = new BgsSnapshot
+            {
+                Schema = "bgs-state/v1", InMatch = true,
+                Player = new BgsPlayer
+                {
+                    Board = new List<BgsMinion> { new BgsMinion { CardId = "BACON_1", Attack = 5, Health = 5 } }
+                }
+            };
+            var env = new EventEnvelope
+            {
+                Schema = "bgs-event/v1", Seq = 10,
+                Event = BridgeEventType.ShopPhaseStart,
+                At = "2026-06-17T00:00:00Z",
+                Data = snap
+            };
+            var j = JObject.Parse(JsonConvert.SerializeObject(env));
+            Assert.AreEqual(JTokenType.Object, j["data"].Type);
+            Assert.AreEqual("bgs-state/v1", (string)j["data"]["schema"]);
+            Assert.AreEqual("BACON_1", (string)j["data"]["player"]["board"][0]["cardId"]);
+            Assert.AreEqual(5, (int)j["data"]["player"]["board"][0]["attack"]);
+        }
     }
 }

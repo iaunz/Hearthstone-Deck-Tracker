@@ -135,7 +135,13 @@ namespace BgsDataBridge
                 {
                     // ShopChanged is owned by the debouncer; ignore any SM emission.
                     if (ev.Type == BridgeEventType.ShopChanged) continue;
-                    Emit(ev.Type, new {});
+                    // §4.2: ShopPhaseStart/CombatPhaseStart carry the full snapshot
+                    // (the buy/sell/level + combat-prediction decision points).
+                    // HeroPick/TrinketPick offered-choices deferred (need adapter capture).
+                    object data = (ev.Type == BridgeEventType.ShopPhaseStart
+                                   || ev.Type == BridgeEventType.CombatPhaseStart)
+                        ? SnapshotData() : null;
+                    Emit(ev.Type, data);
                 }
 
                 // Shop debouncer: poll the shop only while in a BGs shopping phase.
@@ -158,7 +164,8 @@ namespace BgsDataBridge
         {
             // M9: a new match re-arms the MatchEnd guard.
             _matchEnded = false;
-            Emit(BridgeEventType.MatchStart, new {});
+            // §4.2: MatchStart carries the full snapshot (LLM decision context).
+            Emit(BridgeEventType.MatchStart, SnapshotData());
         }
 
         void OnGameEnd()
@@ -169,7 +176,7 @@ namespace BgsDataBridge
             // are no-ops. OnGameStart resets it.
             if (_matchEnded) return;
             _matchEnded = true;
-            Emit(BridgeEventType.MatchEnd, new {});
+            Emit(BridgeEventType.MatchEnd, SnapshotData());
         }
 
         void Emit(BridgeEventType type, object data)
@@ -254,6 +261,20 @@ namespace BgsDataBridge
                 return new { shop = snap.Shop, turn = v.Turn, phase = v.Phase };
             }
             catch { return new {}; }
+        }
+
+        // §4.2: MatchStart/MatchEnd/ShopPhaseStart/CombatPhaseStart carry the
+        // full snapshot so the downstream consumer (LLM) gets complete decision
+        // context (board + shop + hero/heroPower/trinkets/quest + lastOpponent).
+        // Safe on the game thread: Capture() clones entities (I1 fix) and these
+        // events are edge-triggered (once per turn/game), not at 10Hz.
+        // includeText=false → minions carry keywords only (heroPower/trinket/
+        // quest text always included by the projector); keeps the payload lean.
+        // Returns null on failure; Emit falls back to {} (data ?? new {}).
+        object SnapshotData()
+        {
+            try { return _projector.Project(_source.Capture(), false); }
+            catch { return null; }
         }
 
         MenuItem BuildMenu()
