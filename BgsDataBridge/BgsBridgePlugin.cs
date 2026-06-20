@@ -47,6 +47,11 @@ namespace BgsDataBridge
         private WebhookDispatcher _webhook;
         private readonly PhaseStateMachine _sm = new PhaseStateMachine();
         private ShopChangedDebouncer<ShopSnapshot> _shopDeb;
+        private ShopChangedDebouncer<ZoneSnapshot> _boardDeb;
+        private ShopChangedDebouncer<ZoneSnapshot> _handDeb;
+        private readonly TierEdgeTracker _tierEdge = new TierEdgeTracker();
+        private string _lastBoardFp;
+        private string _lastHandFp;
         // watcher 后台线程写、游戏线程读；单一 volatile 字段，持有最近一次商店快照引用。
         // NOTE: OpponentBoardStateWatcher 按 EntityId+Hovered+MousedOverSlot 去重后才 fire
         // （见 HearthWatcher/EventArgs/OpponentBoardArgs.Equals），故纯悬停变更也会移交一个新
@@ -107,6 +112,10 @@ namespace BgsDataBridge
             // design re-captured via GetOpponentBoardState at emit, by which point
             // the shop was often empty/combat — the root cause of empty offers.)
             _shopDeb.OnEmit += snap => Emit(BridgeEventType.ShopChanged, ShopData(snap));
+            _boardDeb = new ShopChangedDebouncer<ZoneSnapshot>(_cfg.ShopChangedQuietMs, _clock);
+            _handDeb = new ShopChangedDebouncer<ZoneSnapshot>(_cfg.ShopChangedQuietMs, _clock);
+            _boardDeb.OnEmit += snap => Emit(BridgeEventType.BoardChanged, BoardData(snap));
+            _handDeb.OnEmit += snap => Emit(BridgeEventType.HandChanged, HandData(snap));
 
             // 商店事件驱动：watcher 在商店发牌/刷新/购买时触发 Change。
             // 与 GameEvents 不同，Watchers.*.Change 是普通 C# 事件，不随插件禁用自动解绑，
@@ -177,31 +186,59 @@ namespace BgsDataBridge
                     Emit(ev.Type, data);
                 }
 
-                // 商店事件驱动：从 watcher 移交的最新快照（_lastShopCards）在游戏线程
-                // 做全部判定与去抖。仅在购物相、非空时喂（空商店不发 → 无空载荷噪声）；
-                // Shop→Combat 切换时 Reset（丢弃未发完的 pending，避免战斗开始时的陈旧发）。
+                // 商店/棋盘/手牌/升本 事件驱动：均在游戏线程判定 + 去抖。
                 bool inShop = g.IsBattlegroundsMatch && !g.IsBattlegroundsCombatPhase && !g.IsInMenu;
-                var cards = _lastShopCards;
-                if(inShop && cards != null && ShopFeedPolicy.ShouldFeed(cards.Count, true))
+                int turn = g.GetTurnNumber();
+
+                if(inShop)
                 {
-                    var sv = new ShopView { Tier = HdtGameSource.ReadTechLevel(g), Frozen = null };
-                    foreach(var bc in cards) sv.Offers.Add(new Entity { CardId = bc.CardId });
-                    var fp = g.GetTurnNumber() + ":" + sv.Tier + ":"
-                           + string.Join(",", cards.Select(c => c.CardId ?? ""));
-                    if(fp != _lastShopFp)
+                    // —— 商店（保持原逻辑）——
+                    var cards = _lastShopCards;
+                    if(cards != null && ShopFeedPolicy.ShouldFeed(cards.Count, true))
                     {
-                        _lastShopFp = fp;
-                        _shopDeb.Update(new ShopSnapshot { Shop = sv, Turn = g.GetTurnNumber(), Phase = "Shop" },
-                                        _clock.NowMs);
+                        var sv = new ShopView { Tier = HdtGameSource.ReadTechLevel(g), Frozen = null };
+                        foreach(var bc in cards) sv.Offers.Add(new Entity { CardId = bc.CardId });
+                        var shopFp = turn + ":" + sv.Tier + ":" + string.Join(",", cards.Select(c => c.CardId ?? ""));
+                        if(shopFp != _lastShopFp)
+                        {
+                            _lastShopFp = shopFp;
+                            _shopDeb.Update(new ShopSnapshot { Shop = sv, Turn = turn, Phase = "Shop" }, _clock.NowMs);
+                        }
                     }
+
+                    // —— 棋盘 / 手牌（全量指纹 diff，首帧 seed 不发，避免与 ShopPhaseStart 重复）——
+                    var zones = _source.CapturePlayerZones();
+                    var boardFp = ZoneFingerprint.Board(zones.Board);
+                    if(_lastBoardFp == null) _lastBoardFp = boardFp;                       // seed
+                    else if(boardFp != _lastBoardFp)
+                    {
+                        _lastBoardFp = boardFp;
+                        _boardDeb.Update(new ZoneSnapshot { Zone = zones.Board, Turn = turn, Phase = "Shop" }, _clock.NowMs);
+                    }
+                    var handFp = ZoneFingerprint.Hand(zones.Hand);
+                    if(_lastHandFp == null) _lastHandFp = handFp;                           // seed
+                    else if(handFp != _lastHandFp)
+                    {
+                        _lastHandFp = handFp;
+                        _handDeb.Update(new ZoneSnapshot { Zone = zones.Hand, Turn = turn, Phase = "Shop" }, _clock.NowMs);
+                    }
+
+                    // —— 升本（边沿，不去抖；tier 单调递增）——
+                    var up = _tierEdge.Observe(zones.Tier);
+                    if(up.HasValue)
+                        Emit(BridgeEventType.TavernUpgraded, new { from = up.Value.Item1, to = up.Value.Item2, turn = turn, phase = "Shop" });
                 }
-                else if(!inShop && _lastShopFp != null)
+                else
                 {
-                    _shopDeb.Reset();
-                    _lastShopFp = null;
-                    _lastShopCards = null;
+                    // 非购物相：丢弃所有 pending + 指纹，杜绝战斗/菜单时的陈旧发。
+                    if(_lastShopFp != null) { _shopDeb.Reset(); _lastShopFp = null; _lastShopCards = null; }
+                    if(_lastBoardFp != null) { _boardDeb.Reset(); _lastBoardFp = null; }
+                    if(_lastHandFp != null) { _handDeb.Reset(); _lastHandFp = null; }
                 }
+
                 _shopDeb.Tick();
+                _boardDeb?.Tick();
+                _handDeb?.Tick();
             }
             catch (Exception ex) { Logger.Error("OnUpdate: " + ex.Message); }
         }
@@ -223,6 +260,7 @@ namespace BgsDataBridge
             // #3: clear the per-match hero/tier cache so the previous match's
             // hero cannot leak into this match's hero-pick snapshot.
             _source?.ResetMatchCache();
+            _tierEdge.Reset();
             // §4.2: MatchStart carries the full snapshot (LLM decision context).
             Emit(BridgeEventType.MatchStart, SnapshotData());
         }
@@ -292,6 +330,28 @@ namespace BgsDataBridge
             catch { return new {}; }
         }
 
+        // 由 pending ZoneSnapshot 构造 BoardChanged/HandChanged webhook data：
+        // 投影 zone → List<BgsMinion>（复用 ToMinion，含 live tags）。emit 时不重捕获。
+        object BoardData(ZoneSnapshot snap)
+        {
+            try
+            {
+                if(snap?.Zone == null) return new {};
+                return new { board = _projector.ProjectZone(snap.Zone, false), turn = snap.Turn, phase = snap.Phase };
+            }
+            catch { return new {}; }
+        }
+
+        object HandData(ZoneSnapshot snap)
+        {
+            try
+            {
+                if(snap?.Zone == null) return new {};
+                return new { hand = _projector.ProjectZone(snap.Zone, false), turn = snap.Turn, phase = snap.Phase };
+            }
+            catch { return new {}; }
+        }
+
         // §4.2: MatchStart/MatchEnd/ShopPhaseStart/CombatPhaseStart carry the
         // full snapshot so the downstream consumer (LLM) gets complete decision
         // context (board + shop + hero/heroPower/trinkets/quest + lastOpponent).
@@ -341,6 +401,8 @@ namespace BgsDataBridge
             // re-entry (ReloadConfig, double-disable) is a safe no-op.
             try { Hearthstone_Deck_Tracker.Hearthstone.Watchers.OpponentBoardStateWatcher.Change -= OnShopBoardChange; } catch { /* 已解绑 */ }
             try { _shopDeb?.Flush(); } catch (Exception ex) { Logger.Error("shop flush: " + ex.Message); }
+            try { _boardDeb?.Flush(); } catch (Exception ex) { Logger.Error("board flush: " + ex.Message); }
+            try { _handDeb?.Flush(); } catch (Exception ex) { Logger.Error("hand flush: " + ex.Message); }
             try { _webhook?.Stop(3000); } catch (Exception ex) { Logger.Error("webhook stop: " + ex.Message); }
             try { _webhook?.Dispose(); } catch { /* Dispose may double-throw after Stop; ignore */ }
             try { _http?.Stop(); } catch (Exception ex) { Logger.Error("http stop: " + ex.Message); }
@@ -351,6 +413,8 @@ namespace BgsDataBridge
             _http = null;
             _webhook = null;
             _shopDeb = null;
+            _boardDeb = null;
+            _handDeb = null;
             _sender = null;
             _source = null;
             _loaded = false;

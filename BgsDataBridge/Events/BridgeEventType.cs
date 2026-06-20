@@ -12,6 +12,9 @@ namespace BgsDataBridge.Events
         [EnumMember(Value = "TrinketPick")] TrinketPick,
         [EnumMember(Value = "ShopPhaseStart")] ShopPhaseStart,
         [EnumMember(Value = "CombatPhaseStart")] CombatPhaseStart,
-        [EnumMember(Value = "ShopChanged")] ShopChanged
+        [EnumMember(Value = "ShopChanged")] ShopChanged,
+        [EnumMember(Value = "BoardChanged")] BoardChanged,
+        [EnumMember(Value = "HandChanged")] HandChanged,
+        [EnumMember(Value = "TavernUpgraded")] TavernUpgraded
     }
 }
