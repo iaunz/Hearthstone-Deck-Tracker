@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>BgsViewer</title></head>
+<body>
+<h1>BgsViewer</h1>
+<p>mode={{ mode }} · statePoll={{ state_poll }} · stateUrl={{ state_url }}</p>
+<pre id="dump">加载中…</pre>
+<script>
+fetch("/api/mode").then(r=>r.json()).then(m=>{
+  fetch("/api/events").then(r=>r.json()).then(ev=>{
+    document.getElementById("dump").textContent =
+      "mode="+JSON.stringify(m)+"\nevents="+ev.length;
+  });
+});
+</script>
+</body></html>
