@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HearthDb.Enums;
 using Hearthstone_Deck_Tracker.API;
 using Hearthstone_Deck_Tracker.Hearthstone;
 using Hearthstone_Deck_Tracker.Hearthstone.Entities;
@@ -32,6 +33,7 @@ namespace BgsDataBridge.Projector
                 v.Spectator = g.Spectator;
                 v.Turn = g.GetTurnNumber();
                 v.Phase = DerivePhase(g);
+                v.Tier = ReadTechLevel(g);
 
                 // I1: take ONE snapshot of the live Entities dictionary up
                 // front. Player.Board / Player.Trinkets / Player.QuestRewards
@@ -176,7 +178,8 @@ namespace BgsDataBridge.Projector
             var obs = HearthMirror.Reflection.Client.GetOpponentBoardState();
             if (obs?.BoardCards == null)
                 return null;
-            var sv = new ShopView { Tier = 0, Frozen = null };
+            // Tier = 玩家当前酒馆等级；Frozen：HearthMirror 暂未暴露商店冻结状态，保持 null（spec §3.2）。
+            var sv = new ShopView { Tier = ReadTechLevel(g), Frozen = null };
             foreach (var bc in obs.BoardCards)
             {
                 var e = new Entity { CardId = bc.CardId };
@@ -228,5 +231,12 @@ namespace BgsDataBridge.Projector
             try { return f(); }
             catch { return null; }
         }
+
+        // 酒馆等级（tech level 1-6）：取玩家英雄实体的 PLAYER_TECH_LEVEL tag
+        // （HDT BobsBuddy 同款读法，BobsBuddyInvoker.cs:428）。g.Player.Hero 与
+        // g.Opponent.Hero 对称（后者已在本类 CaptureLastOpponent 使用）。
+        public static int ReadTechLevel(GameV2 g)
+            => SafeValue(() => g.Player.Hero?.GetTag(GameTag.PLAYER_TECH_LEVEL)) ?? 0;
+
     }
 }
