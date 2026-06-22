@@ -21,7 +21,9 @@ namespace BgsDataBridge.Projector
                     GameType = v.IsBattlegrounds ? (v.IsDuos ? "BattlegroundsDuos" : "BattlegroundsSolo") : "Other",
                     IsBattlegrounds = v.IsBattlegrounds, IsDuos = v.IsDuos, Spectator = v.Spectator,
                     Phase = v.Phase ?? "None", Turn = v.Turn, GameUuid = v.GameUuid,
-                    Rating = (v.Mmr.HasValue || v.DuosMmr.HasValue) ? new BgsRating { Mmr = v.Mmr, DuosMmr = v.DuosMmr } : null
+                    Rating = (v.Mmr.HasValue || v.DuosMmr.HasValue) ? new BgsRating { Mmr = v.Mmr, DuosMmr = v.DuosMmr } : null,
+                    // 畸变:cardId+name+text(text 始终输出,描述规则改动,对 AI 决策关键)。
+                    Anomaly = v.Anomaly != null ? ToCard(v.Anomaly, true) : null
                 },
                 AvailableRaces = v.AvailableRaces ?? new List<string>(),
                 Player = ProjectPlayer(v, includeText),

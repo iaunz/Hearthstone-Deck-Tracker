@@ -147,6 +147,16 @@ namespace BgsDataBridge.Projector
 
                 v.Mmr = SafeValue(() => g.BattlegroundsRatingInfo?.Rating);
                 v.DuosMmr = SafeValue(() => g.BattlegroundsRatingInfo?.DuosRating);
+
+                // 畸变(anomaly):读游戏实体的 BACON_GLOBAL_ANOMALY_DBID tag,转 cardId。
+                // DTO/View 字段已存在,此处补捕获(此前为死字段)。全决策类型受益。
+                var anomalyDbf = SafeValue(() => BattlegroundsUtils.GetBattlegroundsAnomalyDbfId(g.GameEntity));
+                if (anomalyDbf.HasValue)
+                {
+                    var anomalyCardId = Safe(() => Database.GetCardFromDbfId(anomalyDbf.Value, false)?.Id);
+                    if (!string.IsNullOrEmpty(anomalyCardId))
+                        v.Anomaly = new Entity { CardId = anomalyCardId };
+                }
             }
             catch
             {
