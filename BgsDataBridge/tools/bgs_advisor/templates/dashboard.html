@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BgsViewer · 酒馆战棋对局</title>
+<link rel="stylesheet" href="/static/dashboard.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body data-mode="{{ mode }}" data-state-url="{{ state_url }}" data-state-poll="{{ state_poll }}">
+<header id="topbar"></header>
+<section id="current">
+  <div class="col"><h2>YOUR BOARD</h2><div id="board" class="cards"></div>
+    <div id="hero" class="hero"></div></div>
+  <div class="col"><h2>SHOP</h2><div id="shop" class="cards"></div>
+    <div id="extras"></div></div>
+  <div class="col"><h2>LAST OPPONENT</h2><div id="opponent" class="cards"></div>
+    <div id="opponent-hero"></div></div>
+</section>
+<section id="advice-section">
+  <h2>AI 军师</h2>
+  <div id="advice-controls">
+    <button id="advise-shop" type="button">建议:商店期</button>
+    <button id="advise-pos" type="button">建议:摆位</button>
+    <span id="advice-status" class="advice-status">就绪</span>
+    <span id="advice-freshness" class="advice-freshness"></span>
+  </div>
+  <div id="advice-banner"></div>
+  <div id="advice-actions" class="advice-actions"></div>
+  <div id="advice-rationale" class="advice-rationale"></div>
+  <div id="advice-meta" class="advice-meta"></div>
+
+  <details id="advice-settings">
+    <summary>设置(API key / 模型)</summary>
+    <label>API key <input type="password" id="cfg-apikey" placeholder="sk-ant-..."></label>
+    <label>模型 <input type="text" id="cfg-model"></label>
+    <label>Base URL <input type="text" id="cfg-baseurl"></label>
+    <label><input type="checkbox" id="cfg-autopick"> 自动触发英雄/饰品建议</label>
+    <button id="cfg-save" type="button">保存</button>
+    <span id="cfg-msg"></span>
+  </details>
+</section>
+<section id="timeline"><h2>ROUND TIMELINE</h2><div id="rounds"></div>
+  <div id="controls">
+    <button id="prev">◀</button><button id="play">▶</button>
+    <button id="next">▶|</button>
+    <input id="scrub" type="range" min="0" max="0" value="0">
+    <select id="speed"><option value="1000">1×</option><option value="500">2×</option><option value="250">4×</option></select>
+    <span id="pos"></span>
+  </div>
+</section>
+<section id="bottom">
+  <div id="eventstream"><h2>EVENTS</h2><ul id="evlist"></ul></div>
+  <div id="progression"><h2>PROGRESSION</h2>
+    <canvas id="chartHp"></canvas><canvas id="chartAtk"></canvas><canvas id="chartTier"></canvas></div>
+</section>
+<aside id="drawer" class="hidden"><button id="drawer-close">×</button><pre id="drawer-json"></pre></aside>
+<script src="/static/dashboard.js"></script>
+</body></html>
