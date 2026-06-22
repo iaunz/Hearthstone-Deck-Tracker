@@ -54,9 +54,12 @@ class LlmStrategyAdvisor:
         if i < 0 or j < 0 or j < i:
             raise _LLMError("LLM 未返回 JSON")
         obj = json.loads(s[i:j + 1])
-        actions = [Action(kind=a["kind"], cardId=a.get("cardId"), name=a.get("name"),
-                          index=a.get("index"), note=a.get("note"))
-                   for a in obj.get("actions", [])]
+        try:
+            actions = [Action(kind=a["kind"], cardId=a.get("cardId"), name=a.get("name"),
+                              index=a.get("index"), note=a.get("note"))
+                       for a in obj.get("actions", [])]
+        except KeyError as e:
+            raise _LLMError(f"action missing required field: {e}")
         return actions, obj.get("rationale")
 
     # ---- IO 边界:测试中 monkeypatch _call_llm ----

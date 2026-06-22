@@ -33,6 +33,14 @@ class TestLlmStrategy(unittest.TestCase):
         out = adv.advise(snap(), "ShopPhase", [])
         self.assertEqual(out.status, "error")
 
+    def test_advice_error_when_action_missing_kind_after_retry(self):
+        adv = LlmStrategyAdvisor("https://x", "k", "m")
+        adv._call_llm = lambda s, u: '{"rationale":"x","actions":[{"cardId":"ABC"}]}'
+        out = adv.advise(snap(), "ShopPhase", [])
+        self.assertEqual(out.status, "error")
+        self.assertEqual(out.actions, [])
+        self.assertIn("missing required field", out.llm["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

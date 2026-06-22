@@ -34,7 +34,7 @@ python bgs_advisor.py --replay ../bgs_viewer/bgs-events-*.log   # 复盘
 
 - 复用 BgsViewer 的 `eventstore` / `logparser` / `stateview`(兄弟目录 import)。
 - 决策引擎 = 启发式提示 + 云端 LLM(建议唯一来源,无降级)。引擎在后台线程跑,不阻塞 Flask。
-- 纯逻辑模块(`advice`/`heuristics`/`prompt`/`engine`/`advicestore`/`config`)全覆盖 `unittest`:`python tests/test_*.py`。
+- 纯逻辑模块(`advice`/`heuristics`/`prompt`/`engine`/`advicestore`/`config`/`llm_strategy`)全覆盖 `unittest`:`python tests/test_*.py`。
 
 ## 非目标
 

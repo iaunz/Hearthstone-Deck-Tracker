@@ -1,6 +1,4 @@
 """快照 + 启发式 findings → LLM prompt(system+user)。纯逻辑。"""
-from .heuristics import TacticFinding
-
 SYSTEM = """你是酒馆战棋(Battlegrounds)军师。根据当前对局状态给出**类型化的行动建议**。
 你必须只返回一个 JSON 对象,不要任何额外文字,结构为:
 {"rationale": "一句话大局观", "actions": [{"kind": "...", "cardId": "...", "name": "...", "index": null, "note": "..."}]}
