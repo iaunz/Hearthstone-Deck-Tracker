@@ -1050,33 +1050,34 @@ class LlmStrategyAdvisor:
     def advise(self, snapshot, dtype, findings):
         system, user = encode_prompt(snapshot, dtype, findings)
         t0 = time.monotonic()
-        try:
-            raw = self._call_llm(system, user)
-            actions, rationale = self._parse(raw)  # may raise → caught below
-            status = "ok"
-            error = None
-        except _LLMError as e:
-            actions, rationale, status, error = [], None, "error", str(e)
-        except Exception as e:  # 网络/未知 → error(不降级)
-            actions, rationale, status, error = [], None, "error", str(e)
+        actions = rationale = None
+        error = None
+        # spec §10:JSON 不合规重试 1 次(强化"只返回 JSON"提示);网络/未知错误不重试。
+        for attempt in range(2):
+            prompt = user if attempt == 0 else user + "\n\n务必只返回 JSON 对象,不要任何其它文字。"
+            try:
+                raw = self._call_llm(system, prompt)
+                actions, rationale = self._extract(raw)
+                error = None
+                break
+            except _LLMError as e:
+                error = str(e)        # 解析失败 → 进入下一次尝试
+            except Exception as e:
+                error = str(e)        # 网络/未知 → 不重试
+                break
+        status = "ok" if error is None else "error"
+        if status == "error":
+            actions, rationale = [], None
         return Advice(
             decisionType=dtype, trigger="manual", snapshotRef={},
-            status=status, actions=actions, rationale=rationale,
+            status=status, actions=actions or [], rationale=rationale,
             llm={"model": self._model,
                  "latencyMs": int((time.monotonic() - t0) * 1000),
                  "tokensIn": None, "tokensOut": None, "error": error},
         )
 
-    def _parse(self, raw: str):
-        # 容忍模型在 JSON 前后夹带文字:抽取第一个 {...} 块。解析失败重试一次。
-        try:
-            return self._extract(raw)
-        except _LLMError:
-            # 重试一次,强化"只返回 JSON"
-            raw2 = self._last_raw_retry(raw)
-            return self._extract(raw2)
-
     def _extract(self, raw: str):
+        # 容忍模型在 JSON 前后夹带文字:抽取第一个 {...} 块。
         s = raw.strip()
         i, j = s.find("{"), s.rfind("}")
         if i < 0 or j < 0 or j < i:
@@ -1087,14 +1088,7 @@ class LlmStrategyAdvisor:
                    for a in obj.get("actions", [])]
         return actions, obj.get("rationale")
 
-    def _last_raw_retry(self, original: str):
-        # 简化:一次重试;若 _call_llm 本身不可重入,这里仍抛错由上层兜成 error
-        try:
-            return self._call_llm_retry()
-        except Exception as e:
-            raise _LLMError(f"JSON 解析失败且重试失败: {e}")
-
-    # ---- IO 边界:以下方法在测试中被 monkeypatch ----
+    # ---- IO 边界:测试中 monkeypatch _call_llm ----
     def _call_llm(self, system: str, user: str) -> str:
         url = f"{self._baseUrl}/v1/messages"
         headers = {"x-api-key": self._apiKey,
@@ -1107,23 +1101,17 @@ class LlmStrategyAdvisor:
             r = c.post(url, headers=headers, json=body)
             r.raise_for_status()
             data = r.json()
-        # 取第一个 text block 的 text
         for block in data.get("content", []):
             if block.get("type") == "text":
                 return block.get("text", "")
         raise _LLMError("LLM 响应无 text block")
-
-    def _call_llm_retry(self) -> str:
-        # 重试时无法重建原 prompt 上下文(无 state);直接失败。
-        # 真正的"重试"是 advise() 层重新 _call_llm,此处保留接口给 _parse 的二次尝试。
-        raise _LLMError("retry unavailable without re-invoking advise()")
 
 
 class _LLMError(Exception):
     pass
 ```
 
-Note on the retry design: `_parse` does a best-effort second extraction; a full retry (re-calling the API with a "return only JSON" nudge) would require re-invoking `advise`. For Stage 1, an unparseable response after the local re-extraction yields `status=error`, which is the correct no-fallback behavior. A genuine API-level retry can be layered in later without changing the interface.
+The retry loop honors spec §10 (one retry with a "JSON only" nudge) on parse failure; network/unknown errors do not retry. `advise` always returns an `Advice` — `ok` or `error` — never raising, so the engine's no-fallback contract holds. (The `test_advice_error_when_json_unparseable_after_retry` stub returns bad JSON for both attempts → `error`; the `test_advice_error_when_call_raises` stub raises → caught by `except Exception` → `break`, no retry.)
 
 - [ ] **Step 4: Run test to verify it passes**
 
