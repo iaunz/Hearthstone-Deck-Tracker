@@ -55,18 +55,26 @@ def _snapshot_ref(view, seq):
 def _trigger_async(dtype, trigger, seq):
     """后台线程跑引擎(不阻塞 Flask)。结果入 AdviceStore。"""
     def run():
-        events = store.all()
-        # 定位触发点位:实时取末尾;复盘按 seq
-        n = len(events)
-        if seq is not None:
-            n = min(n, max(1, sum(1 for e in events if (e.get("seq") or 0) <= seq)))
-        view = reconstruct_state(events[:n]) or {}
-        engine, _ = RUNTIME.get("engine") or (None, None)
-        if engine is None:
-            engine, _ = _make_engine()
-            RUNTIME["engine"] = (engine, None)
-        advice = engine.decide(view, dtype, trigger=trigger, snapshotRef=_snapshot_ref(view, seq))
-        advice_store.put(advice)
+        try:
+            events = store.all()
+            # 定位触发点位:实时取末尾;复盘按 seq 精确匹配
+            if seq is not None:
+                idx = next((i for i, e in enumerate(events) if e.get("seq") == seq), None)
+                n = (idx + 1) if idx is not None else len(events)
+            else:
+                n = len(events)
+            view = reconstruct_state(events[:n]) or {}
+            engine, _ = RUNTIME.get("engine") or (None, None)
+            if engine is None:
+                engine, _ = _make_engine()
+                RUNTIME["engine"] = (engine, None)
+            advice = engine.decide(view, dtype, trigger=trigger, snapshotRef=_snapshot_ref(view, seq))
+            advice_store.put(advice)
+        except Exception as e:
+            from decision.advice import Advice
+            advice_store.put(Advice(decisionType=dtype, trigger=trigger,
+                                    snapshotRef={"seq": seq}, status="error",
+                                    llm={"error": repr(e)}))
     t = threading.Thread(target=run, daemon=True)
     t.start()
 
