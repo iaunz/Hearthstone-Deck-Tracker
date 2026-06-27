@@ -91,6 +91,7 @@ function setBadge(txt){ const b=document.getElementById("state-badge"); if(b) b.
 
 // —— 事件流 + 时间轴 ——
 function eventTurn(e){
+  if(!e) return undefined;  // 空事件数组时 events[n-1] 为 undefined,守 null
   return (e.match&&e.match.turn!=null?e.match.turn:
           (e.data&&e.data.turn!=null?e.data.turn:
           (e.data&&e.data.match&&e.data.match.turn)));
