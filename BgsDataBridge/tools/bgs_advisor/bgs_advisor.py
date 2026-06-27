@@ -20,7 +20,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "bgs_viewer"))
 from eventstore import EventStore          # noqa: E402
 from logparser import parse                # noqa: E402
-from stateview import reconstruct_state    # noqa: E402
+from stateview import reconstruct_state, compute_progression    # noqa: E402
 
 sys.path.insert(0, HERE)
 from decision.engine import DecisionEngine                       # noqa: E402
@@ -120,6 +120,11 @@ def api_view():
     if n < 0:
         n = 0
     return jsonify(reconstruct_state(events[:n]))
+
+
+@app.route("/api/progression")
+def api_progression():
+    return jsonify(compute_progression(store.all()))
 
 
 @app.route("/api/mode")
