@@ -1,4 +1,6 @@
 "use strict";
+// 顶层包 IIFE,避免 let/const(如 let n) 污染全局作用域、与浏览器扩展等全局同名声明冲突。
+(function(){
 const body = document.body;
 const MODE = body.dataset.mode;                  // "live" | "replay"
 const STATE_URL = body.dataset.stateUrl;
@@ -88,6 +90,7 @@ function setBadge(txt){ const b=document.getElementById("state-badge"); if(b) b.
 
 // —— 事件流 + 时间轴 ——
 function eventTurn(e){
+  if(!e) return undefined;  // 空事件数组时 events[n-1] 为 undefined,守 null
   return (e.match&&e.match.turn!=null?e.match.turn:
           (e.data&&e.data.turn!=null?e.data.turn:
           (e.data&&e.data.match&&e.data.match.turn)));
@@ -197,4 +200,5 @@ document.getElementById("topbar").addEventListener("click",ev=>{
   renderEventStream(); renderRounds(); initReplay();
   await refreshView(); await refreshProgression();
   if(MODE==="live"){ setInterval(poll, 1000); setInterval(refreshProgression, 3000); }
+})();
 })();
