@@ -1,4 +1,7 @@
 "use strict";
+// BgsViewer 主体包在 IIFE 里，避免顶层 let/const（如 `let n`）污染全局作用域、
+// 与浏览器扩展或其它脚本的全局同名声明冲突（曾导致 SyntaxError: Identifier 'n' has already been declared）。
+(function(){
 const body = document.body;
 const MODE = body.dataset.mode;                  // "live" | "replay"
 const STATE_URL = body.dataset.stateUrl;
@@ -198,6 +201,7 @@ document.getElementById("topbar").addEventListener("click",ev=>{
   await refreshView(); await refreshProgression();
   if(MODE==="live"){ setInterval(poll, 1000); setInterval(refreshProgression, 3000); }
 })();
+})(); // —— /BgsViewer scope ——
 
 // ── BgsAdvisor:ADVICE 面板(自包含,独立 1s 轮询) ──────────────────────────
 (function () {
