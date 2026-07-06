@@ -11,11 +11,12 @@ using Hearthstone_Deck_Tracker.Utility;
 
 namespace Hearthstone_Deck_Tracker.Controls;
 
-public partial class AnimatedCard : IPoolItem, INotifyPropertyChanged
+public partial class AnimatedCard : IPoolItem, IDisposable, INotifyPropertyChanged
 {
 	public AnimatedCard()
 	{
 		InitializeComponent();
+		CardTileControl.Subscribe();
 		Core.Overlay.BattlegroundsMinionPinningViewModel.PinsChanged += OnPinsChanged;
 	}
 
@@ -44,16 +45,22 @@ public partial class AnimatedCard : IPoolItem, INotifyPropertyChanged
 
 	public void OnReuseFromPool()
 	{
+		CardTileControl.Subscribe();
 		Core.Overlay.BattlegroundsMinionPinningViewModel.PinsChanged += OnPinsChanged;
 	}
 
-	public void OnReturnToPool()
+	public void OnReturnToPool() => Cleanup();
+
+	public void Dispose() => Cleanup();
+
+	private void Cleanup()
 	{
 		DataContext = null;
 		CardTileViewModel = null;
 		foreach(var sb in _runningStoryBoards.Values.ToList())
 			sb.TrySetResult(false);
 		_runningStoryBoards.Clear();
+		CardTileControl.Unsubscribe();
 		Core.Overlay.BattlegroundsMinionPinningViewModel.PinsChanged -= OnPinsChanged;
 	}
 
@@ -143,9 +150,11 @@ public partial class AnimatedCard : IPoolItem, INotifyPropertyChanged
 		var sb = (Storyboard)FindResource(key);
 		var tcs = new TaskCompletionSource<bool>();
 		_runningStoryBoards[key] = tcs;
-		sb.Completed += (_, __) => tcs.TrySetResult(true);
+		EventHandler handler = (_, __) => tcs.TrySetResult(true);
+		sb.Completed += handler;
 		sb.Begin();
 		var completed = await tcs.Task;
+		sb.Completed -= handler;
 		sb.Remove();
 		_runningStoryBoards.Remove(key);
 		return completed;

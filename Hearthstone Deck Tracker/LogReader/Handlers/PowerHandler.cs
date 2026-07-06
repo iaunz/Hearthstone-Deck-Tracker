@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using HearthDb.Enums;
 using Hearthstone_Deck_Tracker.BobsBuddy;
+using Hearthstone_Deck_Tracker.Controls.Overlay.Battlegrounds.Inspiration;
 using Hearthstone_Deck_Tracker.Enums;
 using Hearthstone_Deck_Tracker.Hearthstone;
 using Hearthstone_Deck_Tracker.Hearthstone.Entities;
@@ -179,8 +180,12 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 							var lastCardDrawnEntity = game.Entities.TryGetValue(lastCardDrawnId ?? -1, out var e) ? e : null;
 							copyOfCardId = lastCardDrawnEntity?.Info.CopyOfCardId ?? lastCardDrawnId.ToString();
 						}
+						else if(gameState.BeatrixCardIds.Contains(id))
+						{
+							cardId = gameState.BeatrixCopiedCard ?? "";
+						}
 					}
-					var entity = new Entity(id) { CardId = cardId};
+					var entity = new Entity(id) { CardId = cardId };
 					if(entityInfo != null)
 					{
 						entity.Info.Forged = entityInfo.Forged;
@@ -211,6 +216,12 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 					if(gameState.CurrentBlock != null && zone == Zone.DECK)
 					{
 						gameState.CurrentBlock.EntitiesCreatedInDeck.Add((entity, new HashSet<int>()));
+					}
+
+					if(gameState.CurrentBlock is {  Type: "TRIGGER" } &&
+					   game.GameEntity?.GetTag(GameTag.STEP) == (int)Step.INVALID)
+					{
+						gameState.BeatrixCardIds.Add(id);
 					}
 
 					if(gameState.CurrentBlock != null && (entity.CardId?.ToUpper().Contains("HERO") ?? false))
@@ -520,6 +531,26 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 						{
 							entity.Info.RevealedOnHistory = true;
 							entity.Info.Hidden = entity.CardId == NonCollectible.Rogue.GaronaHalforcen_KingLlaneToken;
+
+							if(gameState.CurrentBlock is { CardId: Collectible.Paladin.CommanderBeatrix, Type: "TRIGGER" })
+							{
+								foreach(var cId in gameState.BeatrixCardIds)
+								{
+									if(game.Entities.TryGetValue(cId, out var e))
+									{
+										e.CardId = entity.CardId;
+									}
+								}
+
+								if(entity.IsControlledBy(Core.Game.Player.Id))
+								{
+									Core.UpdatePlayerCards();
+								}
+								else
+								{
+									Core.UpdateOpponentCards();
+								}
+							}
 						}
 					}
 					catch(FormatException e)
@@ -888,6 +919,10 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 								break;
 							case Collectible.Demonhunter.GorishiWasp:
 								AddKnownCardId(gameState, NonCollectible.Demonhunter.GorishiWasp_GorishiStingerToken);
+								break;
+							case Collectible.Demonhunter.StardustScythe:
+							case Collectible.Demonhunter.ViciousVoidscale:
+								AddKnownCardId(gameState, Collectible.Demonhunter.VoidSoul);
 								break;
 							case Collectible.Mage.CommanderSivara:
 							case Collectible.Neutral.TidepoolPupil:
@@ -1412,6 +1447,15 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 								break;
 							case Collectible.Neutral.CultivatingSprite:
 								AddKnownCardId(gameState, NonCollectible.Neutral.CultivatingSprite_BloomingBulbToken);
+								break;
+							case Collectible.Neutral.RecklessDetective:
+								AddKnownCardId(gameState, NonCollectible.Neutral.RecklessDetective_DetectivesClothesToken);
+								break;
+							case Collectible.Rogue.LotusBookie:
+								AddKnownCardId(gameState, NonCollectible.Neutral.TheCoinCore);
+								break;
+							case Collectible.Demonhunter.VoidBlast:
+								AddKnownCardId(gameState, Collectible.Demonhunter.VoidSoul);
 								break;
 							case NonCollectible.Warrior.EntertheLostCity_LatorviusGazeOfTheCityToken:
 								if(actionStartingEntity?.IsControlledBy(game.Opponent.Id) == true)

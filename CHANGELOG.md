@@ -1,3 +1,51 @@
+## **Release v1.53.4 - 2026-07-02**
+**General**
+- Fixed the overlay not starting up properly for some users.
+
+**Hearthstone**
+- Added support to Commander Beatrix.
+
+## **Release v1.53.3 - 2026-07-01**
+**Hearthstone**
+- Fixed Animal Companion Counter not updating.
+
+## **Release v1.53.2 - 2026-07-01**
+**Battlegrounds**
+- Fixed the session widget not showing per-match MMR gain/loss.
+
+## **Release v1.53.1 - 2026-06-30**
+**Updated for Hearthstone 36.0**
+
+**General**
+- Fixed the Meta deck pop-up briefly appearing when starting HDT while mid-game.
+- Fixed various crashes and memory leaks.
+
+**Hearthstone**
+- Added related card highlighting for Sketchy Information.
+- Added related card highlighting for Ice Fishing.
+
+**Battlegrounds**
+- Fixed a race condition that could cause the Battlegrounds session widget to miss a match.
+
+## **Release v1.53.0 - 2026-06-29**
+**General**:
+- HDT is now a native 64-bit application, for continued compatibility with Hearthstone
+  *This may fix certain crashes, but should otherwise not be noticeable.*
+
+**Bob's Buddy**:
+- Fixed various minor simulation issues.
+
+## **Release v1.52.23 - 2026-06-28**
+**Streaming**:
+- Fixed the capturable overlay turning invisible when Hearthstone loses focus.
+- Fixed the capturable overlay not showing menu overlays until the first match.
+
+**Overlay**:
+- Fixed menu overlays sometimes remaining visible after restarting Hearthstone.
+
+**Bob's Buddy**:
+- Fixed various minor simulation issues.
+
 ## **Release v1.52.22 - 2026-06-25**
 **Bob's Buddy**
 - Fixed hero power trigger order at the start of combat.

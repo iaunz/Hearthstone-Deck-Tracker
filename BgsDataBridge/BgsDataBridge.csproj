@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
-    <Platforms>x86</Platforms>
+    <Platforms>x64</Platforms>
     <LangVersion>7.3</LangVersion>
     <UseWPF>true</UseWPF>
     <AssemblyName>BgsDataBridge</AssemblyName>
